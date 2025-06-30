@@ -732,7 +732,7 @@ def render_origin_story_for_rule(vb_json: dict) -> str:
     key_index += 1
   ret = "\nTranslated by [Ajahn Brahmali](" + \
     sc_link_for_ref(origin_story_scid) + \
-    ")\n" + markdownify.markdownify(ret) + "...\n"
+    ")\n\n" + markdownify.markdownify(ret) + "...\n"
   if footnotes:
     ret += "\n## Footnotes\n"
     for i, footnote in enumerate(footnotes):
@@ -913,3 +913,4 @@ def render_rule(category: dict, rule_meta: dict, number: int, vb_json: dict):
           continue
         ret += f"[^{i+1}]: {footnote}\n"
   write_md_file(rule_file, uid, None, ret)
+  SCUID_SEGMENT_PATHS.add(rule_keys[0], rule_keys[-1], rule_file)
