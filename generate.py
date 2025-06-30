@@ -4,7 +4,7 @@ import argparse
 from datetime import datetime
 from pathlib import Path
 
-import mdutils
+from vnmutils import mdutils
 import suttacentral
 
 if __name__ == "__main__":
@@ -60,11 +60,21 @@ if __name__ == "__main__":
       else:
         suttacentral.render_copied_bi_rule(bhikkhuni_patimokkha, category, rule, i+1)
 
-  # Write a real README?
-  PALI_FOLDER.joinpath("README.md").write_text(f"""
+  PALI_FOLDER.joinpath("README.md").write_text(f"""# The Vinaya of the Pāli Canon
 
-Automatically generated on {datetime.now().strftime('%Y-%m-%d')}.
+This folder contains notes of the Vinaya of the Pāli Canon,
+primarily featuring translations by Ajahn Brahmali.
+For more information about the texts and his translations, see
+[his general introduction](../Ajahn%20Brahmali/General/General%20introduction%20to%20the%20Monastic%20Law.md).
 
+This folder was automatically generated from SuttaCentral data
+on **{datetime.now().strftime('%Y-%m-%d')}** by:
+https://github.com/obu-labs/pali-vinaya-notes
+
+For feedback on the translations, please write to
+[the SuttaCentral Forum's "Feedback" Category](https://discourse.suttacentral.net/c/feedback/19).
+For issues with these markdown files, please open
+[an Issue on GitHub](https://github.com/obu-labs/pali-vinaya-notes/issues).
 """)
   print("  Done.")
 

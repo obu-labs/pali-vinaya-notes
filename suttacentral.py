@@ -16,7 +16,7 @@ from vnmutils.paliutils import (
   pali_stem,
   sanitize,
 )
-from mdutils import (
+from vnmutils.mdutils import (
   full_obsidian_style_link_for_scuid,
   SCUID_SEGMENT_PATHS,
   abs_path_to_obsidian_link_text,
@@ -342,7 +342,7 @@ aliases:
 
 DO NOT MODIFY.
 To add your thoughts, create a new note and link to this one.
-Found a problem? [Open an issue on GitHub](https://github.com/khemarato/vinaya-notes/issues/new).
+Found a problem? [Open an issue on GitHub](https://github.com/obu-labs/pali-vinaya-notes/issues/new).
 """)
   SCUID_SEGMENT_PATHS.add(start_scuid, end_scuid, rule_file)
 

@@ -1,4 +1,4 @@
 joblib
 markdownify
 unidecode
-git+https://github.com/obu-labs/vnmutils.git@5dd6b9cc4ebde15072386789479205956d2cb3ca#egg=vnmutils
+git+https://github.com/obu-labs/vnmutils.git@574d7ee1de6f6eb7e7e457bcdf6e3b9d7c39fdec#egg=vnmutils
