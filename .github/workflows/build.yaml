@@ -15,33 +15,11 @@ jobs:
       - run: pip install -r requirements.txt
       - run: sh downloaddeps.sh
       - run: python generate.py
-      - run: cd 'Canon (Pali)' && zip -r ../contents.zip .
-      - name: Calculate Version
-        run: echo "version=0.${{ github.run_number }}.0" >> $GITHUB_OUTPUT
-        id: version
-      - name: Create VNM File
-        run: |
-          echo '{
-            "folder": "Canon (Pali)",
-            "description": "The Vinaya of the Pāli Canon in Pāli and English translation.",
-            "more_info": "https://github.com/${{ github.repository }}",
-            "version": "${{ steps.version.outputs.version }}",
-            "requires": {
-              "Ajahn Brahmali": "*",
-              "Bhante Suddhaso": "*"
-            },
-            "zip": "https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/contents.zip"
-          }' > manifest.vnm
-      - name: Create Release
-        id: release
-        uses: softprops/action-gh-release@v2
+      - uses: obu-labs/vinaya-notes-module-releaser@main
+        id: releaser
         with:
-          tag_name: v${{ steps.version.outputs.version }}
-          body: |
-            Release ${{ steps.version.outputs.version }}
-          draft: false
-          prerelease: false
-          files: |
-            contents.zip
-            data/scidmap.json
-            manifest.vnm
+          path: "Canon (Pali)"
+          metadata_file: metadata.yaml
+      - run: gh release upload v${{ steps.releaser.outputs.version }} data/scidmap.json
+        env:
+          GH_TOKEN: ${{ github.token }}
