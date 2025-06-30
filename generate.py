@@ -81,3 +81,9 @@ For issues with these markdown files, please open
   print("Rewriting SuttaCentral Links in Generated Files...")
   mdutils.rewrite_suttacentral_links_in_folder(PALI_FOLDER)
   print("  Done.")
+
+  print("Outputting the SCID Mapping to a json file for use by other modules...")
+  suttacentral.DATA_FOLDER.joinpath("scidmap.json").write_text(
+    mdutils.SCUID_SEGMENT_PATHS.to_json(PALI_FOLDER.parent)
+  )
+  print("  Done.")
