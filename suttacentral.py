@@ -580,6 +580,12 @@ def render_note_as_markdown(note: str, cwd: Path) -> str:
         matched = False
         for term in pali_terms:
           term = pali_stem(term.group(1))
+          if term == 'bahidvārakoṭṭhak':
+            term = 'koṭṭhak' # Hack around BuNp15:1.2.16
+          elif term == 'anujānām':
+            term = 'anuj' # BuPc21:1.23
+          elif term == 'dūses':
+            term = 'dūs' # BuPc27
           if " " in term:
             raise NotImplementedError("Teach me how to handle multi-word Pali terms")
           if term in BRAHMALI_GLOSSARY:
@@ -711,7 +717,12 @@ def render_copied_bi_rule(bhikkhuni_patimokkha: dict, category: dict, rule_meta:
 
 
 def render_origin_story_for_rule(vb_json: dict) -> str:
-  origin_story_scid = get_key_where_translation_contains(vb_json, 'Origin story')
+  try:
+    origin_story_scid = get_key_where_translation_contains(vb_json, 'Origin story')
+  except ValueError:
+    origin_story_scid = None
+  if not origin_story_scid:
+    origin_story_scid = get_key_where_translation_contains(vb_json, 'First sub-story')
   final_ruling_key = get_key_where_translation_contains(vb_json, 'Final ruling')
   final_ruling_key_index = vb_json['keys_order'].index(final_ruling_key)
   fpath = VB_STORY_FOLDER.joinpath(
@@ -719,7 +730,10 @@ def render_origin_story_for_rule(vb_json: dict) -> str:
   )
   ret = ''
   footnotes = []
-  key_index = vb_json['keys_order'].index(origin_story_scid) + 1
+  if origin_story_scid == 'pli-tv-bu-vb-pc1:1.1.0':
+    key_index = vb_json['keys_order'].index('pli-tv-bu-vb-pc1:1.2')
+  else:
+    key_index = vb_json['keys_order'].index(origin_story_scid) + 1
   key = origin_story_scid
   while key_index < final_ruling_key_index:
     key = vb_json['keys_order'][key_index]
@@ -748,7 +762,16 @@ def render_permutations_for_rule(vb_json: dict) -> str | None: # returns scid
   if len(permutations_scids) > 1:
     raise Exception(f"Multiple permutations sections found: {permutations_scids}")
   permutations_scid = permutations_scids[0]
-  nonoffense_scid = get_key_where_translation_contains(vb_json, 'Non-offenses')
+  try:
+    nonoffense_scid = get_key_where_translation_contains(vb_json, 'Non-offenses')
+  except ValueError:
+    nonoffense_scid = None
+  if not nonoffense_scid:
+    nonoffense_scid = get_key_where_roottext_contains(vb_json, ' aniyato niṭṭhito')
+  try:
+    nonoffense_scid = get_key_where_translation_contains(vb_json, 'More Definitions')
+  except ValueError:
+    pass
   nonoffense_scid_index = vb_json['keys_order'].index(nonoffense_scid)
   fpath = VB_PERMUTATIONS_FOLDER.joinpath(
     f"Permutations for {rule_shortname(permutations_scid)}.md"
@@ -784,12 +807,10 @@ def render_permutations_for_rule(vb_json: dict) -> str | None: # returns scid
 def render_rule(category: dict, rule_meta: dict, number: int, vb_json: dict):
   ascii_rulename = f" {unidecode(category['root_name'])} {number} "
   sangha = "Bhikkhu"
-  origin_story_scid = None
-  permutations_scid = None
   if rule_meta['uid'].startswith('pli-tv-bi'):
     sangha = "Bhikkhuni"
-    origin_story_scid = render_origin_story_for_rule(vb_json)
-    permutations_scid = render_permutations_for_rule(vb_json)
+  origin_story_scid = render_origin_story_for_rule(vb_json)
+  permutations_scid = render_permutations_for_rule(vb_json)
   if ' Sekhiya ' not in ascii_rulename and sangha == "Bhikkhu":
     vb_file = path_to_suddhaso_file_starting_with(f"VB{ascii_rulename}")
     SCUID_SEGMENT_PATHS.add(rule_meta['uid'], None, vb_file)
@@ -874,15 +895,15 @@ def render_rule(category: dict, rule_meta: dict, number: int, vb_json: dict):
     ret += '\n'
   ret += f"~ [Ajahn Brahmali's translation]({sc_link_for_ref(rule_keys[0])})\n\n"
   ret += "## Vibhaṅga\n\n"
+  if ' Sekhiya ' not in ascii_rulename and sangha == "Bhikkhu":
+    ret += (f"  - {full_obsidian_style_link_for_scuid(rule_meta['uid'], PM_FOLDER)}"
+      " ~ Bhante Suddhaso's translation (pdf)\n")
   if origin_story_scid:
     ret += (f"  - {full_obsidian_style_link_for_scuid(origin_story_scid, PM_FOLDER)}"
       " ~ Ajahn Brahmali's translation\n")
   if permutations_scid:
     ret += (f"  - {full_obsidian_style_link_for_scuid(permutations_scid, PM_FOLDER)}"
       " ~ Ajahn Brahmali's translation\n")
-  if ' Sekhiya ' not in ascii_rulename and sangha == "Bhikkhu":
-    ret += (f"  - {full_obsidian_style_link_for_scuid(rule_meta['uid'], PM_FOLDER)}"
-      " ~ Bhante Suddhaso's translation (pdf)\n")
   if nonoffenses_scid:
     ret += "  - " + full_obsidian_style_link_for_scuid(nonoffenses_scid, PM_FOLDER)
     ret += " ~ Ajahn Brahmali's translation\n"
