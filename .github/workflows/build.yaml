@@ -20,6 +20,8 @@ jobs:
         with:
           path: "Canon (Pali)"
           metadata_file: metadata.yaml
-      - run: gh release upload v${{ steps.releaser.outputs.version }} data/scidmap.json
+      - run: |
+          gh release upload v${{ steps.releaser.outputs.version }} data/scidmap.json
+          gh --repo obu-labs/vinaya workflow run build.yaml
         env:
           GH_TOKEN: ${{ github.token }}
