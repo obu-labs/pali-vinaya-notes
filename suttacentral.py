@@ -586,7 +586,7 @@ def render_note_as_markdown(note: str, cwd: Path) -> str:
             term = 'anuj' # BuPc21:1.23
           elif term == 'dūses':
             term = 'dūs' # BuPc27
-          elif term == 'abbhantar':
+          elif term in ['abbhantar', 'dhan', 'yoj', 'aṅgul']:
             term = 'sugat' # This is one of the measurement terms
           if " " in term:
             raise NotImplementedError("Teach me how to handle multi-word Pali terms")
