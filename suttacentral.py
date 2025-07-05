@@ -45,10 +45,7 @@ def set_global_folders(pali_path: Path):
   global BRAHMALI_GLOSSARY
   global PM_FOLDER
   global VB_FOLDER
-  global VB_STORY_FOLDER
   global VB_WORD_DEFS_FOLDER
-  global VB_NONOFFENSES_FOLDER
-  global VB_PERMUTATIONS_FOLDER
 
   PALI_FOLDER = pali_path
   HYPOTHETICAL_VAULT_ROOT = pali_path.parent
@@ -59,15 +56,62 @@ def set_global_folders(pali_path: Path):
   }
   PM_FOLDER = PALI_FOLDER.joinpath('Patimokkha')
   VB_FOLDER = PALI_FOLDER.joinpath('Vibhanga')
-  VB_STORY_FOLDER = VB_FOLDER.joinpath('Origin Stories')
   VB_WORD_DEFS_FOLDER = VB_FOLDER.joinpath('Word Analysis')
-  VB_NONOFFENSES_FOLDER = VB_FOLDER.joinpath('Nonoffenses')
-  VB_PERMUTATIONS_FOLDER = VB_FOLDER.joinpath('Permutations')
   VB_WORD_DEFS_FOLDER.mkdir(exist_ok=True, parents=True)
-  VB_NONOFFENSES_FOLDER.mkdir()
-  VB_PERMUTATIONS_FOLDER.mkdir()
-  VB_STORY_FOLDER.mkdir()
   PM_FOLDER.mkdir()
+
+def vb_folder_for_scid(scid: str) -> Path:
+  return _rule_path_for_scid(scid, '', VB_FOLDER)
+
+def pm_file_for_scid(scid: str) -> Path:
+  return _rule_path_for_scid(scid, '.md', PM_FOLDER)
+
+def pm_file_for_copied_bi_rule(pm_id: str, rule_name: str) -> Path:
+  return _rule_path_for_scid(pm_id.replace('-pm-', '-vb-'), '.md', PM_FOLDER, rule_name)
+
+def file_for_category(category: dict) -> Path:
+  ret = _rule_dir_for_scid(category['uid'], VB_FOLDER)
+  sangha = "Bhikkhu"
+  if '-bi-' in category['uid']:
+    sangha = "Bhikkhunī"
+  return ret / f"The {sangha} {category['root_name']}s.md"
+
+def _rule_dir_for_scid(scid: str, base: Path):
+  ret = base
+  offset = 0
+  if scid.startswith('pli-tv-bu-vb-'):
+    ret = ret / 'Bhikkhu'
+  elif scid.startswith('pli-tv-bi-vb-'):
+    ret = ret / 'Bhikkhuni'
+    if scid[13:15] not in ['pj', 'ss']:
+      offset = -1
+  else:
+    raise ValueError(f"Unknown vb scid \"{scid}\"")
+  match scid[13:15]:
+    case 'pj':
+      ret = ret / '1 - Parajika'
+    case 'ss':
+      ret = ret / '2 - Sanghadisesa'
+    case 'ay':
+      ret = ret / '3 - Aniyata'
+    case 'np':
+      ret = ret / f'{4+offset} - Nissaggiya Pacittiya'
+    case 'pc':
+      ret = ret / f'{5+offset} - Pacittiya'
+    case 'pd':
+      ret = ret / f'{6+offset} - Patidesaniya'
+    case 'sk':
+      ret = ret / f'{7+offset} - Sekhiya'
+    case _:
+      raise ValueError(f"Unknown rule class \"{scid[13:15]}\"")
+  return ret
+
+def _rule_path_for_scid(scid: str, suffix: str, base: Path, rule_name: Optional[str] = None) -> Path:
+  scid = scid.split(':')[0]
+  ret = _rule_dir_for_scid(scid, base)
+  if not rule_name:
+    rule_name = RULENAMES[scid]
+  return ret / f"{scid[7:9].capitalize()} {scid[13:15].capitalize()} {scid[15:]} ({rule_name}){suffix}"
 
 def find_sub_list(sl:list, l:list, start=0) -> int:
     sll = len(sl)
@@ -168,8 +212,8 @@ NOTES_NEEDING_MULTIPLE_LINKS = [
 COMMENT_INLINE_PALI = re.compile(r"<i lang=['\"]pi['\"] translate=['\"]no['\"]>(.*?)<\/i>")
 
 @disk_memoizer.cache()
-def get_rule_categories():
-  r = requests.get(SC_MENU_URL.format('pli-tv-bu-vb'))
+def get_rule_categories(scid):
+  r = requests.get(SC_MENU_URL.format(scid))
   return r.json()[0]['children']
 
 @disk_memoizer.cache()
@@ -325,6 +369,7 @@ def path_to_suddhaso_file_starting_with(file_prefix: str) -> Optional[Path]:
 PREVIOUSLY_WRITTEN_FILES = set()
 
 def write_md_file(rule_file: Path, start_scuid: str, end_scuid: str | None, content: str) -> None:
+  rule_file.parent.mkdir(exist_ok=True, parents=True)
   aliases = start_scuid
   if end_scuid and end_scuid != start_scuid:
     aliases += f"\n  - {end_scuid}"
@@ -342,7 +387,7 @@ aliases:
 
 DO NOT MODIFY.
 To add your thoughts, create a new note and link to this one.
-Found a problem? [Open an issue on GitHub](https://github.com/obu-labs/pali-vinaya-notes/issues/new).
+Found a problem? [Open an issue on GitHub](https://github.com/obu-labs/pali-vinaya-notes/issues/).
 """)
   SCUID_SEGMENT_PATHS.add(start_scuid, end_scuid, rule_file)
 
@@ -606,7 +651,7 @@ def render_note_as_markdown(note: str, cwd: Path) -> str:
 def render_nonoffenses(vb_json: dict, heading_scid: str):
   if "<section class='anapatti'" not in vb_json['html_text'][heading_scid]:
     raise Exception(f"Expected {heading_scid} to be a nonoffense section start")
-  fpath = VB_NONOFFENSES_FOLDER.joinpath(
+  fpath = vb_folder_for_scid(heading_scid).joinpath(
     f"Nonoffenses for {rule_shortname(heading_scid)}.md"
   )
   ret = ''
@@ -623,7 +668,7 @@ def render_nonoffenses(vb_json: dict, heading_scid: str):
     try:
       ret += f"\n{vb_json['translation_text'][scid].strip()}"
       if 'comment_text' in vb_json and scid in vb_json['comment_text']:
-        footnotes.append(render_note_as_markdown(vb_json['comment_text'][scid], VB_NONOFFENSES_FOLDER))
+        footnotes.append(render_note_as_markdown(vb_json['comment_text'][scid], fpath.parent))
         translator_note_count += 1
         ret += f"[^{len(footnotes)}]"
       ret += "  \n"
@@ -650,7 +695,7 @@ def render_nonoffenses(vb_json: dict, heading_scid: str):
     if translator_note_count > 1:
       ret += "s"
     ret += " "
-  ret += f"by Ajahn Brahmali.\nSource URL: <{sc_link_for_ref(linkto)}>\n"
+  ret += f"by Ajahn Brahmali.\nSource: <{sc_link_for_ref(linkto)}>\n"
   write_md_file(fpath, heading_scid, scid, ret)
 
 PM_RULE_HTMLS = {
@@ -710,10 +755,9 @@ def render_copied_bi_rule(bhikkhuni_patimokkha: dict, category: dict, rule_meta:
   ret += f"\n~ [Ajahn Brahmali's translation]({sc_link_for_ref(rule_keys[0])})"
   ret += "\n\n## Vibhaṅga\n\n"
   ret += "The Vibhaṅga for this rule doesn't exist. "
-  filepath = PM_FOLDER.joinpath(
-    f"Bhikkhuni {unidecode(category['root_name'])} {number} ({rulename}).md"
-  )
-  ret += "Please see " + full_obsidian_style_link_for_scuid(bu_parallel_id, filepath)
+  filepath = pm_file_for_copied_bi_rule(rule_meta['uid'], rulename)
+  ret += "Please see [the monk's rule"
+  ret += abs_path_to_obsidian_link_text(SCUID_SEGMENT_PATHS.get(bu_parallel_id), filepath)
   ret += " for links to its analysis.\n"
   write_md_file(filepath, rule_meta['uid'], None, ret)
 
@@ -727,7 +771,7 @@ def render_origin_story_for_rule(vb_json: dict) -> str:
     origin_story_scid = get_key_where_translation_contains(vb_json, 'First sub-story')
   final_ruling_key = get_key_where_translation_contains(vb_json, 'Final ruling')
   final_ruling_key_index = vb_json['keys_order'].index(final_ruling_key)
-  fpath = VB_STORY_FOLDER.joinpath(
+  fpath = vb_folder_for_scid(origin_story_scid).joinpath(
     f"Origin story for {rule_shortname(origin_story_scid)}.md"
   )
   ret = ''
@@ -742,13 +786,13 @@ def render_origin_story_for_rule(vb_json: dict) -> str:
     line = vb_json['html_text'][key]
     text = vb_json['translation_text'].get(key, '')
     if 'comment_text' in vb_json and key in vb_json['comment_text']:
-      footnotes.append(render_note_as_markdown(vb_json['comment_text'][key], VB_STORY_FOLDER))
+      footnotes.append(render_note_as_markdown(vb_json['comment_text'][key], fpath.parent))
       text += f"[^{len(footnotes)}] "
     ret += line.replace("{}", text)
     key_index += 1
-  ret = "\nTranslated by [Ajahn Brahmali](" + \
+  ret = "\nTranslated by Ajahn Brahmali\n\nSource: <" + \
     sc_link_for_ref(origin_story_scid) + \
-    ")\n\n" + markdownify.markdownify(ret) + "...\n"
+    ">\n\n" + markdownify.markdownify(ret) + "...\n"
   if footnotes:
     ret += "\n## Footnotes\n"
     for i, footnote in enumerate(footnotes):
@@ -775,7 +819,7 @@ def render_permutations_for_rule(vb_json: dict) -> str | None: # returns scid
   except ValueError:
     pass
   nonoffense_scid_index = vb_json['keys_order'].index(nonoffense_scid)
-  fpath = VB_PERMUTATIONS_FOLDER.joinpath(
+  fpath = vb_folder_for_scid(permutations_scid).joinpath(
     f"Permutations for {rule_shortname(permutations_scid)}.md"
   )
   ret = ''
@@ -789,13 +833,13 @@ def render_permutations_for_rule(vb_json: dict) -> str | None: # returns scid
     line = vb_json['html_text'][key]
     text = vb_json['translation_text'].get(key, '')
     if 'comment_text' in vb_json and key in vb_json['comment_text'] and len(vb_json['comment_text'][key].strip()) > 1:
-      footnotes.append(render_note_as_markdown(vb_json['comment_text'][key], VB_PERMUTATIONS_FOLDER))
+      footnotes.append(render_note_as_markdown(vb_json['comment_text'][key], fpath.parent))
       text += f"[^{len(footnotes)}] "
     ret += line.replace("{}", text)
     key_index += 1
-  ret = "\nTranslated by [Ajahn Brahmali](" + \
+  ret = "\nTranslated by Ajahn Brahmali\n\nSource: <" + \
     sc_link_for_ref(permutations_scid) + \
-    ")\n\n" + markdownify.markdownify(ret)
+    ">\n\n" + markdownify.markdownify(ret)
   if footnotes:
     ret += "\n## Note"
     if len(footnotes) > 1:
@@ -805,6 +849,11 @@ def render_permutations_for_rule(vb_json: dict) -> str | None: # returns scid
       ret += f"\n[^{i + 1}]: {footnote}\n"
   write_md_file(fpath, permutations_scid, key, ret)
   return permutations_scid
+
+def render_category_metafile(category: dict):
+  fpath = file_for_category(category)
+  markdown = markdownify.markdownify(category['blurb'])
+  write_md_file(fpath, category['uid'], None, f"\n{markdown}")
 
 def render_rule(category: dict, rule_meta: dict, number: int, vb_json: dict):
   ascii_rulename = f" {unidecode(category['root_name'])} {number} "
@@ -817,8 +866,7 @@ def render_rule(category: dict, rule_meta: dict, number: int, vb_json: dict):
     vb_file = path_to_suddhaso_file_starting_with(f"VB{ascii_rulename}")
     SCUID_SEGMENT_PATHS.add(rule_meta['uid'], None, vb_file)
   uid = rule_meta['uid'].replace('-vb-', '-pm-')
-  rule_file = PM_FOLDER.joinpath(
-    f"{sangha}{ascii_rulename}({RULENAMES[rule_meta['uid']]}).md")
+  rule_file = pm_file_for_scid(rule_meta['uid'])
   rule_keys = get_final_ruling_refs_from_vb_json(vb_json)
   ret = "## The Rule\n"
   root_text = get_root_text(vb_json, rule_keys)
@@ -871,7 +919,7 @@ def render_rule(category: dict, rule_meta: dict, number: int, vb_json: dict):
       
       # Add link end and variant footnotes as needed
       if j == end_of_link:
-        rendered_root += abs_path_to_obsidian_link_text(current_def[1], PM_FOLDER)
+        rendered_root += abs_path_to_obsidian_link_text(current_def[1], rule_file.parent)
         k += 1
         (current_def, def_in_scope, start_of_link, end_of_link) = _get_def(k)
         if j in variant_map:
@@ -892,22 +940,22 @@ def render_rule(category: dict, rule_meta: dict, number: int, vb_json: dict):
   for k in rule_keys:
     ret += vb_json['translation_text'].get(k, '').strip()
     if k in vb_json.get('comment_text', {}):
-      footnotes.append(render_note_as_markdown(vb_json['comment_text'][k], PM_FOLDER))
+      footnotes.append(render_note_as_markdown(vb_json['comment_text'][k], rule_file.parent))
       ret += f"[^{len(footnotes)}]"
     ret += '\n'
   ret += f"~ [Ajahn Brahmali's translation]({sc_link_for_ref(rule_keys[0])})\n\n"
   ret += "## Vibhaṅga\n\n"
   if ' Sekhiya ' not in ascii_rulename and sangha == "Bhikkhu":
-    ret += (f"  - {full_obsidian_style_link_for_scuid(rule_meta['uid'], PM_FOLDER)}"
+    ret += (f"  - {full_obsidian_style_link_for_scuid(rule_meta['uid'], rule_file.parent)}"
       " ~ Bhante Suddhaso's translation (pdf)\n")
   if origin_story_scid:
-    ret += (f"  - {full_obsidian_style_link_for_scuid(origin_story_scid, PM_FOLDER)}"
+    ret += (f"  - {full_obsidian_style_link_for_scuid(origin_story_scid, rule_file.parent)}"
       " ~ Ajahn Brahmali's translation\n")
   if permutations_scid:
-    ret += (f"  - {full_obsidian_style_link_for_scuid(permutations_scid, PM_FOLDER)}"
+    ret += (f"  - {full_obsidian_style_link_for_scuid(permutations_scid, rule_file.parent)}"
       " ~ Ajahn Brahmali's translation\n")
   if nonoffenses_scid:
-    ret += "  - " + full_obsidian_style_link_for_scuid(nonoffenses_scid, PM_FOLDER)
+    ret += "  - " + full_obsidian_style_link_for_scuid(nonoffenses_scid, rule_file.parent)
     ret += " ~ Ajahn Brahmali's translation\n"
   ret += "\n"
   if footnotes:
@@ -924,7 +972,7 @@ def render_rule(category: dict, rule_meta: dict, number: int, vb_json: dict):
         # it relies on this metadata and these links only appear in the rules
         if "Appendix on Individual Bhikkhunī Rules" in footnote:
           appendix_link = "[Appendix on Individual Bhikkhunī Rules]"
-          appendix_link += "(../../Ajahn%20Brahmali/"
+          appendix_link += "(../../../../Ajahn%20Brahmali/"
           appendix_link += "Specific%20Bhikkhuni%20Rules/Bhikkhunī%20"
           appendix_link += category['root_name'].lower() + '%20'
           appendix_link += str(number) + ".md)"

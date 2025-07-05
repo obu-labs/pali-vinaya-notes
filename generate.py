@@ -30,17 +30,25 @@ if __name__ == "__main__":
 
   print("Generating Pātimokkha Rule Notes...")
   print("  Fetching rule categories...")
-  categories = suttacentral.get_rule_categories()
+  categories = suttacentral.get_rule_categories('pli-tv-bu-vb')
   bhikkhuni_patimokkha = suttacentral.get_vb_json('pli-tv-bi-pm')
-  for category in categories:
+  for i, category in enumerate(categories):
     if category['uid'] == "pli-tv-bu-vb-as":
-      continue # TODO: Handle the adhikaraṇasamathas
+      continue # TODO: https://github.com/obu-labs/pali-vinaya-notes/issues/1
+    suttacentral.render_category_metafile(category)
     print(f"  Fetching Bhikkhu {category['root_name']} rules...")
     rules = suttacentral.get_rules_for_category(category['uid'])
-    for i, rule in enumerate(rules):
-      print(f"    Writing {category['root_name']} rule {i+1}...")
+    for j, rule in enumerate(rules):
+      print(f"    Writing {category['root_name']} rule {j+1}...")
       vb_json = suttacentral.get_vb_json(rule['uid'])
-      suttacentral.render_rule(category, rule, i+1, vb_json)
+      suttacentral.render_rule(category, rule, j+1, vb_json)
+  
+  bi_categories = suttacentral.get_rule_categories('pli-tv-bi-vb')
+  for i, category in enumerate(bi_categories):
+    if category['uid'] == "pli-tv-bi-vb-as":
+      continue
+    suttacentral.render_category_metafile(category)
+    category['root_name'] = category['root_name'].replace('aP', 'a P')
     print(f"  Fetching Bhikkhuni {category['root_name']} rules...")
     vibhangas = suttacentral.get_rules_for_category(
       category['uid'].replace('-bu-', '-bi-')
@@ -51,14 +59,14 @@ if __name__ == "__main__":
     rules = suttacentral.get_bhikkhuni_rules_in_category(
       category['uid'].replace('-bu-', '-bi-').replace('-vb-', '-pm-')
     )
-    for i, rule in enumerate(rules):
-      print(f"    Writing {category['root_name']} rule {i+1}...")
+    for j, rule in enumerate(rules):
+      print(f"    Writing {category['root_name']} rule {j+1}...")
       vb_id = rule['uid'].replace('-pm-', '-vb-')
       if vb_id in vibhangas:
         vb_json = suttacentral.get_vb_json(vb_id)
-        suttacentral.render_rule(category, vibhangas[vb_id], i+1, vb_json)
+        suttacentral.render_rule(category, vibhangas[vb_id], j+1, vb_json)
       else:
-        suttacentral.render_copied_bi_rule(bhikkhuni_patimokkha, category, rule, i+1)
+        suttacentral.render_copied_bi_rule(bhikkhuni_patimokkha, category, rule, j+1)
 
   PALI_FOLDER.joinpath("README.md").write_text(f"""# The Vinaya of the Pāli Canon
 
