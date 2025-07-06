@@ -728,19 +728,22 @@ def get_pm_rule_keys(patimokkha: dict, rule_name: str) -> list[str]:
   assert patimokkha['html_text'][cur_loc] in PM_NOT_RULE_HTMLS, f"Unknown HTML found at {cur_loc}: \"{patimokkha['html_text'][cur_loc]}\""
   return ret
 
-def render_copied_bi_rule(bhikkhuni_patimokkha: dict, category: dict, rule_meta: dict, number: int):
+def get_bu_parallel_for_rule(rule: dict) -> str:
   bu_parallel_id = 'pli-tv-bi-pm-pc90'
-  if rule_meta['uid'].startswith('pli-tv-bi-pm-pd'):
+  if rule['uid'].startswith('pli-tv-bi-pm-pd'):
     bu_parallel_id = 'pli-tv-bi-pm-pd1'
-  elif rule_meta['uid'] == 'pli-tv-bi-pm-sk30':
+  elif rule['uid'] == 'pli-tv-bi-pm-sk30':
     bu_parallel_id = 'pli-tv-bu-pm-sk30'
-  elif rule_meta['uid'] not in {'pli-tv-bi-pm-pc91', 'pli-tv-bi-pm-pc92', 'pli-tv-bi-pm-pc93'}:
-    bu_parallel = rule_meta['uid'].replace('-bi-', '-bu-')[:15]
-    bu_parallel = [p for p in rule_meta['parallels'] if (p['to']['uid'] or '').startswith(bu_parallel)]
-    assert len(bu_parallel) == 1, f"Found {len(bu_parallel)} parallels for {rule_meta['uid']} {rule_meta['name']}: {bu_parallel}"
+  elif rule['uid'] not in {'pli-tv-bi-pm-pc91', 'pli-tv-bi-pm-pc92', 'pli-tv-bi-pm-pc93'}:
+    bu_parallel = rule['uid'].replace('-bi-', '-bu-')[:15]
+    bu_parallel = [p for p in rule['parallels'] if (p['to']['uid'] or '').startswith(bu_parallel)]
+    assert len(bu_parallel) == 1, f"Found {len(bu_parallel)} parallels for {rule['uid']} {rule['name']}: {bu_parallel}"
     bu_parallel = bu_parallel[0]
     bu_parallel_id = bu_parallel['to']['uid']
-  rulename = RULENAMES[bu_parallel_id.replace('-pm-', '-vb-')]
+  return bu_parallel_id
+
+def render_copied_bi_rule(bhikkhuni_patimokkha: dict, category: dict, rule_meta: dict, number: int, next_file: Path | None):
+  rulename = RULENAMES[rule_meta['uid'].replace('-pm-', '-vb-')]
   rule_keys = get_pm_rule_keys(bhikkhuni_patimokkha, f"{category['root_name']} {number}. ")
   ret = """
 ## The Rule
@@ -757,8 +760,12 @@ def render_copied_bi_rule(bhikkhuni_patimokkha: dict, category: dict, rule_meta:
   ret += "The Vibhaṅga for this rule doesn't exist. "
   filepath = pm_file_for_copied_bi_rule(rule_meta['uid'], rulename)
   ret += "Please see [the monk's rule"
-  ret += abs_path_to_obsidian_link_text(SCUID_SEGMENT_PATHS.get(bu_parallel_id), filepath)
+  ret += abs_path_to_obsidian_link_text(SCUID_SEGMENT_PATHS.get(get_bu_parallel_for_rule(rule_meta)), filepath)
   ret += " for links to its analysis.\n"
+  if next_file:
+    ret += "\n\n**Next:** [" + next_file.stem
+    ret += abs_path_to_obsidian_link_text(next_file, filepath)
+    ret += "\n"
   write_md_file(filepath, rule_meta['uid'], None, ret)
 
 
@@ -852,10 +859,18 @@ def render_permutations_for_rule(vb_json: dict) -> str | None: # returns scid
 
 def render_category_metafile(category: dict):
   fpath = file_for_category(category)
-  markdown = markdownify.markdownify(category['blurb'])
-  write_md_file(fpath, category['uid'], None, f"\n{markdown}")
+  markdown = "\n" + markdownify.markdownify(category['blurb'])
+  markdown += "\n\nNext: ["
+  if '-bi-' in category['uid']:
+    markdown += "Bhikkhunī "
+  else:
+    markdown += "Bhikkhu "
+  markdown += category['root_name'] + " 1 (" + RULENAMES[category['uid']+'1'] + ")"
+  markdown += abs_path_to_obsidian_link_text(pm_file_for_scid(category['uid']+'1'), fpath)
+  markdown += "\n"
+  write_md_file(fpath, category['uid'], None, markdown)
 
-def render_rule(category: dict, rule_meta: dict, number: int, vb_json: dict):
+def render_rule(category: dict, rule_meta: dict, number: int, vb_json: dict, next_file: Path | None):
   ascii_rulename = f" {unidecode(category['root_name'])} {number} "
   sangha = "Bhikkhu"
   if rule_meta['uid'].startswith('pli-tv-bi'):
@@ -981,5 +996,9 @@ def render_rule(category: dict, rule_meta: dict, number: int, vb_json: dict):
         if i < num_variants:
           continue
         ret += f"[^{i+1}]: {footnote}\n"
+  if next_file:  
+    ret += "\n\n**Next:** [" + next_file.stem
+    ret += abs_path_to_obsidian_link_text(next_file, rule_file)
+    ret += "\n"
   write_md_file(rule_file, uid, None, ret)
   SCUID_SEGMENT_PATHS.add(rule_keys[0], rule_keys[-1], rule_file)
