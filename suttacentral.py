@@ -945,18 +945,16 @@ def render_rule(category: dict, rule_meta: dict, number: int, vb_json: dict):
     ret += '\n'
   ret += f"~ [Ajahn Brahmali's translation]({sc_link_for_ref(rule_keys[0])})\n\n"
   ret += "## Vibhaṅga\n\n"
-  if ' Sekhiya ' not in ascii_rulename and sangha == "Bhikkhu":
-    ret += (f"  - {full_obsidian_style_link_for_scuid(rule_meta['uid'], rule_file.parent)}"
-      " ~ Bhante Suddhaso's translation (pdf)\n")
   if origin_story_scid:
-    ret += (f"  - {full_obsidian_style_link_for_scuid(origin_story_scid, rule_file.parent)}"
-      " ~ Ajahn Brahmali's translation\n")
+    ret += f"  - [Origin Story{abs_path_to_obsidian_link_text(SCUID_SEGMENT_PATHS.get(origin_story_scid), rule_file)}\n"
   if permutations_scid:
-    ret += (f"  - {full_obsidian_style_link_for_scuid(permutations_scid, rule_file.parent)}"
-      " ~ Ajahn Brahmali's translation\n")
+    ret += f"  - [Permutations{abs_path_to_obsidian_link_text(SCUID_SEGMENT_PATHS.get(permutations_scid), rule_file)}\n"
   if nonoffenses_scid:
-    ret += "  - " + full_obsidian_style_link_for_scuid(nonoffenses_scid, rule_file.parent)
-    ret += " ~ Ajahn Brahmali's translation\n"
+    ret += "  - [Non-offenses" + abs_path_to_obsidian_link_text(SCUID_SEGMENT_PATHS.get(nonoffenses_scid), rule_file.parent)
+    ret += "\n"
+  if ' Sekhiya ' not in ascii_rulename and sangha == "Bhikkhu":
+    ret += (f"  - [Bhante Suddhaso's translation{abs_path_to_obsidian_link_text(SCUID_SEGMENT_PATHS.get(rule_meta['uid']), rule_file)}"
+      " (pdf)\n")
   ret += "\n"
   if footnotes:
     if num_variants > 0:
