@@ -1,5 +1,6 @@
 #!/bin/python3
 
+from collections import deque
 from pathlib import Path
 from typing import Optional
 import requests
@@ -383,11 +384,7 @@ aliases:
 ---
 {content}
 
----
-
-DO NOT MODIFY.
-To add your thoughts, create a new note and link to this one.
-Found a problem? [Open an issue on GitHub](https://github.com/obu-labs/pali-vinaya-notes/issues/).
+[^WARNING]: DO NOT MODIFY. To add your thoughts, create a new note and link to this one. Found a problem? [Open an issue on GitHub](https://github.com/obu-labs/pali-vinaya-notes/issues/).
 """)
   SCUID_SEGMENT_PATHS.add(start_scuid, end_scuid, rule_file)
 
@@ -748,17 +745,35 @@ def render_copied_bi_rule(bhikkhuni_patimokkha: dict, category: dict, rule_meta:
   ret = """
 ## The Rule
 """
+  footnotes = []
+  filepath = pm_file_for_copied_bi_rule(rule_meta['uid'], rulename)
   root_lines = [bhikkhuni_patimokkha['root_text'][k] for k in rule_keys]
   translation_lines = [bhikkhuni_patimokkha['translation_text'][k] for k in rule_keys]
-  for line in root_lines:
+  for i, line in enumerate(root_lines):
+    variant_map = build_variant_map(line, rule_keys[i], bhikkhuni_patimokkha)
+    assert len(variant_map) == 0, f"Unexpectedly found variants at {rule_keys[i]}: {variant_map}"
     ret += f"\n> {line} "
   ret += "\n"
-  for line in translation_lines:
-    ret += f"\n{line} "
+  for i, line in enumerate(translation_lines):
+    key = rule_keys[i]
+    ret += f"\n{line.rstrip()}"
+    if key in bhikkhuni_patimokkha.get('comment_text', {}):
+      notedown = render_note_as_markdown(
+        bhikkhuni_patimokkha['comment_text'][key],
+        filepath,
+      )
+      if "see Appendix on Individual Bhikkhunī Rules" in notedown:
+        assert key == "pli-tv-bi-pm:9.1", "I thought the only Indv Rule note was BiPj1"
+        notedown = notedown.replace(
+          "see Appendix on Individual Bhikkhunī Rules",
+          "see [Appendix on Individual Bhikkhunī Rules](../../../../Ajahn%20Brahmali/Specific%20Bhikkhuni%20Rules/Bhikkhunī%20pārājika%201.md)",
+        )
+      footnotes.append(notedown + " (AjBr)")
+      ret += f"[^{len(footnotes)}]"
+    ret += "  "
   ret += f"\n~ [Ajahn Brahmali's translation]({sc_link_for_ref(rule_keys[0])})"
   ret += "\n\n## Vibhaṅga\n\n"
   ret += "The Vibhaṅga for this rule doesn't exist. "
-  filepath = pm_file_for_copied_bi_rule(rule_meta['uid'], rulename)
   ret += "Please see [the monk's rule"
   ret += abs_path_to_obsidian_link_text(SCUID_SEGMENT_PATHS.get(get_bu_parallel_for_rule(rule_meta)), filepath)
   ret += " for links to its analysis.\n"
@@ -766,6 +781,10 @@ def render_copied_bi_rule(bhikkhuni_patimokkha: dict, category: dict, rule_meta:
     ret += "\n\n**Next:** [" + next_file.stem
     ret += abs_path_to_obsidian_link_text(next_file, filepath)
     ret += "\n"
+  if len(footnotes) > 0:
+    ret += "\n## Footnotes\n\n"
+    for i, f in enumerate(footnotes):
+      ret += f"[^{i+1}]: {f}\n"
   write_md_file(filepath, rule_meta['uid'], None, ret)
 
 
@@ -920,9 +939,11 @@ def render_rule(category: dict, rule_meta: dict, number: int, vb_json: dict, nex
     key = rule_keys[i]
     variant_map = build_variant_map(line, key, vb_json)
     rendered_root += "\n> "
+    defered_footnotes = deque()
     for j, word in enumerate(line):
       # Handle def link start
       if j == start_of_link:
+        assert len(defered_footnotes) == 0, "Defered footnotes should be rendered before next link start"
         rendered_root += "["
       
       # Render the word itself
@@ -937,13 +958,19 @@ def render_rule(category: dict, rule_meta: dict, number: int, vb_json: dict, nex
         rendered_root += abs_path_to_obsidian_link_text(current_def[1], rule_file.parent)
         k += 1
         (current_def, def_in_scope, start_of_link, end_of_link) = _get_def(k)
+        while len(defered_footnotes) > 0:
+          rendered_root += f"[^{defered_footnotes.popleft()}]"
         if j in variant_map:
           # Render footnotes at the end of a link outside the link
           rendered_root += f"[^{len(footnotes)}]"
       elif j in variant_map:
         overlaps_link = def_in_scope and (start_of_link <= j < end_of_link)
         # Render footnotes inside a link as unicode superscripts
-        rendered_root += superscript_number(len(footnotes)) if overlaps_link else f"[^{len(footnotes)}]"
+        if overlaps_link:
+          rendered_root += superscript_number(len(footnotes))
+          defered_footnotes.append(len(footnotes))
+        else:
+          rendered_root += f"[^{len(footnotes)}]"
       
       # Add space between words
       if j < len(line) - 1:
@@ -955,7 +982,7 @@ def render_rule(category: dict, rule_meta: dict, number: int, vb_json: dict, nex
   for k in rule_keys:
     ret += vb_json['translation_text'].get(k, '').strip()
     if k in vb_json.get('comment_text', {}):
-      footnotes.append(render_note_as_markdown(vb_json['comment_text'][k], rule_file.parent))
+      footnotes.append(render_note_as_markdown(vb_json['comment_text'][k], rule_file.parent) + " (AjBr)")
       ret += f"[^{len(footnotes)}]"
     ret += '\n'
   ret += f"~ [Ajahn Brahmali's translation]({sc_link_for_ref(rule_keys[0])})\n\n"
@@ -971,15 +998,18 @@ def render_rule(category: dict, rule_meta: dict, number: int, vb_json: dict, nex
     ret += (f"  - [Bhante Suddhaso's translation{abs_path_to_obsidian_link_text(SCUID_SEGMENT_PATHS.get(rule_meta['uid']), rule_file)}"
       " (pdf)\n")
   ret += "\n"
+  if next_file:  
+    ret += "\n**Next:** [" + next_file.stem
+    ret += abs_path_to_obsidian_link_text(next_file, rule_file)
+    ret += "\n"
   if footnotes:
+    ret += "\n## Footnotes\n\n"
     if num_variants > 0:
-      ret += "## Variants\n\n"
       for i, footnote in enumerate(footnotes):
         if i >= num_variants:
           break
         ret += f"[^{i+1}]: {footnote}\n"
     if len(footnotes) > num_variants:
-      ret += "\n## Translator's Notes\n\n"
       for i, footnote in enumerate(footnotes):
         # This doesn't go in the render_note_as_markdown function because
         # it relies on this metadata and these links only appear in the rules
@@ -996,9 +1026,5 @@ def render_rule(category: dict, rule_meta: dict, number: int, vb_json: dict, nex
         if i < num_variants:
           continue
         ret += f"[^{i+1}]: {footnote}\n"
-  if next_file:  
-    ret += "\n\n**Next:** [" + next_file.stem
-    ret += abs_path_to_obsidian_link_text(next_file, rule_file)
-    ret += "\n"
   write_md_file(rule_file, uid, None, ret)
   SCUID_SEGMENT_PATHS.add(rule_keys[0], rule_keys[-1], rule_file)
