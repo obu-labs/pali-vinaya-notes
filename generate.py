@@ -86,21 +86,19 @@ if __name__ == "__main__":
       else:
         suttacentral.render_copied_bi_rule(bhikkhuni_patimokkha, category, rule, j+1, next_file)
 
-  PALI_FOLDER.joinpath("README.md").write_text(f"""# The Vinaya of the Pāli Canon
+  PALI_FOLDER.joinpath("README.md").write_text(f"""
+This folder contains the Vinaya of the Pāli Canon as a collection of markdown notes generated from Ajahn Brahmali's translation on SuttaCentral.
+For more information about the Vinaya and his translation, see [his general introduction](../Ajahn%20Brahmali/General/General%20introduction%20to%20the%20Monastic%20Law.md).
 
-This folder contains notes of the Vinaya of the Pāli Canon,
-primarily featuring translations by Ajahn Brahmali.
-For more information about the texts and his translations, see
-[his general introduction](../Ajahn%20Brahmali/General/General%20introduction%20to%20the%20Monastic%20Law.md).
-
-This folder was automatically generated from SuttaCentral data
-on **{datetime.now().strftime('%Y-%m-%d')}** by:
+This folder was automatically generated from SuttaCentral data on **{datetime.now().strftime('%Y-%m-%d')}** by:
 https://github.com/obu-labs/pali-vinaya-notes
 
 For feedback on the translations, please write to
 [the SuttaCentral Forum's "Feedback" Category](https://discourse.suttacentral.net/c/feedback/19).
-For issues with these markdown files, please open
+For issues with these markdown files, feel free to open
 [an Issue on GitHub](https://github.com/obu-labs/pali-vinaya-notes/issues).
+
+To support SuttaCentra's work, consider [making a donation](https://suttacentral.net/donations?lang=en).
 """)
   print("  Done.")
 
