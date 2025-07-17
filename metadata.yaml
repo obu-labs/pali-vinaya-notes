@@ -1,2 +1,5 @@
 folder: Canon (Pali)
 description: The Vinaya of the Pāli Canon in Pāli and English translation.
+submodules:
+ - name: The Bhikkhunī Rules
+   paths: ["Patimokkha/Bhikkhuni", "Vibhanga/Bhikkhuni"]
