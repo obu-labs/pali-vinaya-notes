@@ -28,6 +28,12 @@ if __name__ == "__main__":
 
   suttacentral.set_global_folders(PALI_FOLDER)
 
+  print("Generating Khandhaka Rule Notes...")
+  print("  Fetching Kds...")
+  khandhakas = suttacentral.get_kd_plex()
+  vb_json = suttacentral.get_vb_json(khandhakas[1]['uid'])
+  suttacentral.render_kd(khandhakas[1], vb_json)
+
   print("Generating Pātimokkha Rule Notes...")
   print("  Fetching rule categories...")
   categories = suttacentral.get_rule_categories('pli-tv-bu-vb')

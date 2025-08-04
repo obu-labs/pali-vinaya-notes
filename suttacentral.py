@@ -18,7 +18,6 @@ from vnmutils.paliutils import (
   sanitize,
 )
 from vnmutils.mdutils import (
-  full_obsidian_style_link_for_scuid,
   SCUID_SEGMENT_PATHS,
   abs_path_to_obsidian_link_text,
   superscript_number,
@@ -46,6 +45,7 @@ def set_global_folders(pali_path: Path):
   global BRAHMALI_GLOSSARY
   global PM_FOLDER
   global VB_FOLDER
+  global KD_FOLDER
   global VB_WORD_DEFS_FOLDER
 
   PALI_FOLDER = pali_path
@@ -57,9 +57,11 @@ def set_global_folders(pali_path: Path):
   }
   PM_FOLDER = PALI_FOLDER.joinpath('Patimokkha')
   VB_FOLDER = PALI_FOLDER.joinpath('Vibhanga')
+  KD_FOLDER = PALI_FOLDER.joinpath('Khandhakas')
   VB_WORD_DEFS_FOLDER = VB_FOLDER.joinpath('Word Analysis')
   VB_WORD_DEFS_FOLDER.mkdir(exist_ok=True, parents=True)
   PM_FOLDER.mkdir()
+  KD_FOLDER.mkdir()
 
 def vb_folder_for_scid(scid: str) -> Path:
   return _rule_path_for_scid(scid, '', VB_FOLDER)
@@ -130,6 +132,7 @@ BILARA_URL = "https://suttacentral.net/api/bilarasuttas/{}/brahmali?lang=en"
 SC_MENU_URL = "https://suttacentral.net/api/menu/{}?language=en"
 PARALLELS_URL = "https://suttacentral.net/api/parallels/{}"
 LITE_PARALLELS_URL = "https://suttacentral.net/api/parallels_lite/{}"
+SUTTAPLEX_URL = "https://suttacentral.net/api/suttaplex/{}?language=en"
 
 def sc_link_for_ref(ref: str) -> str:
   key = ref.split(':')
@@ -211,6 +214,11 @@ NOTES_NEEDING_MULTIPLE_LINKS = [
 ]
 
 COMMENT_INLINE_PALI = re.compile(r"<i lang=['\"]pi['\"] translate=['\"]no['\"]>(.*?)<\/i>")
+
+@disk_memoizer.cache()
+def get_kd_plex():
+  r = requests.get(SUTTAPLEX_URL.format("pli-tv-kd"))
+  return r.json()
 
 @disk_memoizer.cache()
 def get_rule_categories(scid):
@@ -1028,3 +1036,67 @@ def render_rule(category: dict, rule_meta: dict, number: int, vb_json: dict, nex
         ret += f"[^{i+1}]: {footnote}\n"
   write_md_file(rule_file, uid, None, ret)
   SCUID_SEGMENT_PATHS.add(rule_keys[0], rule_keys[-1], rule_file)
+
+def render_kd_subchapter(folder: Path, vb_json: dict, segments: list[str], h2_segment: str) -> list[dict]:
+  """
+  Renders the files for this "h2" wrapped section of a Khandhaka
+  
+  :param folder: The folder where this Kd is being written
+  :type folder: Path
+  :param vb_json: The Bilara Data for this Kd
+  :type vb_json: dict
+  :param segments: The segment ids for this section (not including the h2)
+  :type segments: list[str]
+  :param h2_segment: The segment id for the header of this section
+  :type h2_segment: str
+  :return: The files written { 'path': Path, 'title': str }
+  :rtype: list[dict]
+  """
+  h3s = []
+  for segment in segments:
+    if "<h3" in vb_json['html_text'][segment]:
+      h3s.append(segment)
+  
+  raise NotImplementedError()
+
+def render_kd(kd_plex: dict, vb_json: dict):
+  segments = vb_json['keys_order'].copy()
+  assert "class='endsutta'" in vb_json['html_text'][segments.pop()], f"Expected {kd_plex['uid']} to end with an endsutta tag"
+  udana_segments = []
+  udana_segments.append(segments.pop())
+  assert vb_json['root_text'][udana_segments[0]].startswith("Imamhi khandhake "), f"Expected {kd_plex['uid']}:{udana_segments[0]} to start with 'Imamhi khandhake...'"
+  while True:
+    assert len(segments) > 0, f"Expected {kd_plex['uid']} to end in a endsutta tag before the udana"
+    segment = segments.pop()
+    if "class='endsutta'" in vb_json['html_text'][segment]:
+      break
+    udana_segments.append(segment)
+  assert len(udana_segments) > 1, f"Expected {kd_plex['uid']} to have an udana"
+  assert vb_json['root_text'][udana_segments[-1]].startswith("Tassuddānaṁ"), f"Expected {kd_plex['uid']}:{udana_segments[-1]} to start with 'Tassuddānaṁ'"
+  udana_segments.reverse()
+  pali_name = kd_plex['original_title'].replace('khandhaka', '')
+  if pali_name.endswith('k'):
+    pali_name = pali_name[:-1]
+  folder = KD_FOLDER.joinpath(f"{kd_plex['acronym']} {pali_name}")
+  folder.mkdir()
+  metapath = folder.joinpath(f"0 - {kd_plex['translated_title'].strip()}.md")
+  metacontents = "## Summary\n\n" + kd_plex['blurb'] + "\n\n## Table of Contents\n\n"
+  subchapters = []
+  subchapter_segments = []
+  while len(segments) > 0:
+    segment = segments.pop()
+    if '<h2' in vb_json['html_text'][segment]:
+      subchapter_segments.reverse()
+      subchapters.append(
+        render_kd_subchapter(folder, vb_json, subchapter_segments, segment)
+      )
+      subchapter_segments = []
+    else:
+      subchapter_segments.append(segment)
+  subchapters.reverse()
+  for subchapter in subchapters:
+    for file in subchapter:
+      metacontents += "["
+      metacontents += file['title']
+      metacontents += abs_path_to_obsidian_link_text(file['path'], folder)
+  write_md_file(metapath, kd_plex['uid'], None, metacontents)
