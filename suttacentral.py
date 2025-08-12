@@ -11,6 +11,7 @@ import json
 import joblib
 from unidecode import unidecode
 import markdownify
+from bs4 import BeautifulSoup
 
 from vnmutils.paliutils import (
   match_terms_to_root_text,
@@ -1037,7 +1038,7 @@ def render_rule(category: dict, rule_meta: dict, number: int, vb_json: dict, nex
   write_md_file(rule_file, uid, None, ret)
   SCUID_SEGMENT_PATHS.add(rule_keys[0], rule_keys[-1], rule_file)
 
-def render_kd_subchapter(folder: Path, vb_json: dict, segments: list[str], h2_segment: str) -> list[dict]:
+def render_kd_subchapter(folder: Path, vb_json: dict, segments: list[str], h2_segment: str) -> list[Path]:
   """
   Renders the files for this "h2" wrapped section of a Khandhaka
   
@@ -1052,19 +1053,68 @@ def render_kd_subchapter(folder: Path, vb_json: dict, segments: list[str], h2_se
   :return: The files written { 'path': Path, 'title': str }
   :rtype: list[dict]
   """
-  h3s = []
+  h3_segments = []
   for segment in segments:
     if "<h3" in vb_json['html_text'][segment]:
-      h3s.append(segment)
+      h3_segments.append(segment)
   
-  raise NotImplementedError()
+
+  h2_trans_title = vb_json['translation_text'][h2_segment].strip()
+  assert re.match(r'^\d+\. ', h2_trans_title), f"Expected {h2_segment} to start with a number, got {h2_trans_title}"
+  h2_trans_title = h2_trans_title.split('. ')
+  h2_num = int(h2_trans_title[0])
+  h2_trans_title = h2_trans_title[1].strip()
+  if '</' in h2_trans_title:
+    h2_trans_title = BeautifulSoup(h2_trans_title, 'html.parser').get_text().strip()
+  assert re.search(r'[!?<>:"/\\|\*]', h2_trans_title) is None, f"Invalid filename character in \"{h2_trans_title}\""
+  filepath = folder.joinpath(f"{h2_num} - {unidecode(h2_trans_title)}.md")
+  ret = [filepath]
+  
+  if len(h3_segments) == 0:
+    # No h3s, so just write the whole section as a single file
+    contents = ""
+    for segment in segments:
+      try:
+        contents += vb_json['translation_text'][segment] + "\n" # TODO: Proper rendering logic
+      except KeyError:
+        pass
+    write_md_file(filepath, h2_segment, segments[-1], contents)
+    return ret
+  
+  # We have h3s, so write each h3 as a separate file
+  i = len(h3_segments)
+  last_segment = segments[-1]
+  for h3_segment in reversed(h3_segments):
+    subpath = f"{h2_num}.{i} - {vb_json['translation_text'][h3_segment].strip()}.md"
+    subpath = subpath.replace('/', '_')
+    subpath = folder.joinpath(subpath)
+    ret.insert(1, subpath)
+    write_md_file(subpath, h3_segment, last_segment, '') # TODO: Proper rendering logic
+    i -= 1
+    last_segment = segments[segments.index(h3_segment) - 1]
+  
+  contents = ""
+  for segment in segments:
+    if segment == h3_segments[0]:
+      break
+    try:
+      contents += vb_json['translation_text'][segment] + "\n" # TODO: Proper rendering logic
+    except KeyError:
+      pass
+  contents += "\n### Subsections\n"
+  for subpath in ret[1:]:
+    contents += f"[{subpath.stem}{abs_path_to_obsidian_link_text(subpath, folder)}\n"
+  write_md_file(filepath, h2_segment, last_segment, contents)
+
+  return ret
 
 def render_kd(kd_plex: dict, vb_json: dict):
   segments = vb_json['keys_order'].copy()
   assert "class='endsutta'" in vb_json['html_text'][segments.pop()], f"Expected {kd_plex['uid']} to end with an endsutta tag"
   udana_segments = []
   udana_segments.append(segments.pop())
-  assert vb_json['root_text'][udana_segments[0]].startswith("Imamhi khandhake "), f"Expected {kd_plex['uid']}:{udana_segments[0]} to start with 'Imamhi khandhake...'"
+  last_segment = vb_json['root_text'][udana_segments[0]]
+  assert last_segment.startswith("Imamhi khandhake ") or last_segment.startswith("Imasmiṁ khandhake "), f"Expected {kd_plex['uid']}:{udana_segments[0]} to start with 'Imamhi/Imasmiṁ khandhake...'"
   while True:
     assert len(segments) > 0, f"Expected {kd_plex['uid']} to end in a endsutta tag before the udana"
     segment = segments.pop()
@@ -1097,6 +1147,7 @@ def render_kd(kd_plex: dict, vb_json: dict):
   for subchapter in subchapters:
     for file in subchapter:
       metacontents += "["
-      metacontents += file['title']
-      metacontents += abs_path_to_obsidian_link_text(file['path'], folder)
+      metacontents += file.stem
+      metacontents += abs_path_to_obsidian_link_text(file, folder)
+      metacontents += "  \n"
   write_md_file(metapath, kd_plex['uid'], None, metacontents)

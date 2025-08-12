@@ -31,8 +31,10 @@ if __name__ == "__main__":
   print("Generating Khandhaka Rule Notes...")
   print("  Fetching Kds...")
   khandhakas = suttacentral.get_kd_plex()
-  vb_json = suttacentral.get_vb_json(khandhakas[1]['uid'])
-  suttacentral.render_kd(khandhakas[1], vb_json)
+  for khandhaka in khandhakas[1:]: # The first entry is the title
+    print(f"  Writing {khandhaka['acronym']}...")
+    vb_json = suttacentral.get_vb_json(khandhaka['uid'])
+    suttacentral.render_kd(khandhaka, vb_json)
 
   print("Generating Pātimokkha Rule Notes...")
   print("  Fetching rule categories...")
