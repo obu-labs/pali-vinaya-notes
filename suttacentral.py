@@ -210,6 +210,14 @@ NOTES_NEEDING_MULTIPLE_LINKS = [
   " and the rendering of ", # BuPc25
 ]
 
+# After the "Final Ruling" these Origin Stories keep going, describing
+# an allowance that was made after the rule. We render these separately.
+ALLOWANCE_STORIES = {
+  'pli-tv-bu-vb-pc14': 'pli-tv-bu-vb-pc14:1.2.0',
+  'pli-tv-bu-vb-pc21': 'pli-tv-bu-vb-pc21:2.0',
+  'pli-tv-bu-vb-pc33': 'pli-tv-bu-vb-pc33:4.0',
+}
+
 COMMENT_INLINE_PALI = re.compile(r"<i lang=['\"]pi['\"] translate=['\"]no['\"]>(.*?)<\/i>")
 
 @disk_memoizer.cache()
@@ -813,6 +821,7 @@ def render_origin_story_for_rule(vb_json: dict) -> str:
     text = vb_json['translation_text'].get(key, '')
     if 'comment_text' in vb_json and key in vb_json['comment_text']:
       footnotes.append(render_note_as_markdown(vb_json['comment_text'][key], fpath.parent))
+      text = text.rstrip()
       text += f"[^{len(footnotes)}] "
     ret += line.replace("{}", text)
     key_index += 1
@@ -825,6 +834,53 @@ def render_origin_story_for_rule(vb_json: dict) -> str:
       ret += f"\n[^{i + 1}]: {footnote}\n"
   write_md_file(fpath, origin_story_scid, key, ret)
   return origin_story_scid
+
+def render_allowance_for_rule(vb_json: dict, allowance_scid: str) -> str:
+  fpath = vb_folder_for_scid(allowance_scid).joinpath(
+    f"Allowance for {rule_shortname(allowance_scid)}.md"
+  )
+  definitions_key = get_keys_where_html_contains(vb_json, "<section class='padabhajaniya'><h2")
+  definitions_key_index = vb_json['keys_order'].index(definitions_key[0])
+  ret = ''
+  footnotes = []
+  key = allowance_scid
+  key_index = vb_json['keys_order'].index(allowance_scid)
+  assert key_index < definitions_key_index, f"Expected {allowance_scid} to be before {definitions_key[0]}"
+  # Render the origin story for the allowance
+  while True:
+    key = vb_json['keys_order'][key_index]
+    line = vb_json['html_text'][key]
+    if 'rule' in line:
+      break
+    text = vb_json['translation_text'].get(key, '')
+    if 'comment_text' in vb_json and key in vb_json['comment_text']:
+      footnotes.append(render_note_as_markdown(vb_json['comment_text'][key], fpath.parent))
+      text = text.rstrip()
+      text += f"[^{len(footnotes)}] "
+    ret += line.replace("{}", text)
+    key_index += 1
+  # Render the text of the allowance
+  ret = markdownify.markdownify(ret) + "\n\n#### The Allowance\n"
+  while key_index < definitions_key_index:
+    key = vb_json['keys_order'][key_index]
+    translation = vb_json['translation_text'].get(key, '')
+    text = vb_json['root_text'].get(key, '')
+    # TODO render variants as footnotes as well here
+    if 'comment_text' in vb_json and key in vb_json['comment_text']:
+      footnotes.append(render_note_as_markdown(vb_json['comment_text'][key], fpath.parent))
+      translation = translation.rstrip()
+      translation += f"[^{len(footnotes)}] "
+    ret += f"\n> {text.strip()}\n"
+    ret += f"\n**{translation.strip()}**\n"
+    key_index += 1
+  ret = "\nTranslated by Ajahn Brahmali\n\nSource: <" + \
+    sc_link_for_ref(allowance_scid) + ">\n\n" + ret
+  if footnotes:
+    ret += "\n## Footnotes\n"
+    for i, footnote in enumerate(footnotes):
+      ret += f"\n[^{i + 1}]: {footnote}\n"
+  write_md_file(fpath, allowance_scid, key, ret)
+  return allowance_scid
 
 def render_permutations_for_rule(vb_json: dict) -> str | None: # returns scid
   try:
@@ -895,6 +951,9 @@ def render_rule(category: dict, rule_meta: dict, number: int, vb_json: dict, nex
   if rule_meta['uid'].startswith('pli-tv-bi'):
     sangha = "Bhikkhuni"
   origin_story_scid = render_origin_story_for_rule(vb_json)
+  allowance_scid = None
+  if rule_meta['uid'] in ALLOWANCE_STORIES:
+    allowance_scid = render_allowance_for_rule(vb_json, ALLOWANCE_STORIES[rule_meta['uid']])
   permutations_scid = render_permutations_for_rule(vb_json)
   if ' Sekhiya ' not in ascii_rulename and sangha == "Bhikkhu":
     vb_file = path_to_suddhaso_file_starting_with(f"VB{ascii_rulename}")
@@ -989,6 +1048,8 @@ def render_rule(category: dict, rule_meta: dict, number: int, vb_json: dict, nex
   ret += "## Vibhaṅga\n\n"
   if origin_story_scid:
     ret += f"  - [Origin Story{abs_path_to_obsidian_link_text(SCUID_SEGMENT_PATHS.get(origin_story_scid), rule_file)}\n"
+  if allowance_scid:
+    ret += f"  - [Allowance{abs_path_to_obsidian_link_text(SCUID_SEGMENT_PATHS.get(allowance_scid), rule_file)}\n"
   if permutations_scid:
     ret += f"  - [Permutations{abs_path_to_obsidian_link_text(SCUID_SEGMENT_PATHS.get(permutations_scid), rule_file)}\n"
   if nonoffenses_scid:
