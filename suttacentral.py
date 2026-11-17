@@ -258,6 +258,14 @@ def get_vb_json(rule_id: str) -> dict:
   r = requests.get(BILARA_URL.format(rule_id))
   return r.json()
 
+def clean_vb_json(data: dict) -> dict:
+  """Removes empty comments and empty variants that SuttaCentral returns for segments without entries."""
+  if 'comment_text' in data:
+    data['comment_text'] = {k: v for k, v in data['comment_text'].items() if v and v.strip()}
+  if 'variant_text' in data:
+    data['variant_text'] = {k: v for k, v in data['variant_text'].items() if v and v.strip()}
+  return data
+
 def get_keys_where_html_contains(vb_json: dict, text: str) -> list[str]:
   return get_keys_where_text_contains(vb_json, 'html_text', text)
 
@@ -478,8 +486,11 @@ def build_variant_map(line: list[str], key: str, vb_json: dict) -> dict[int, lis
   """Given a `line` of Pali words at `key` in `vb_json`, return a map from word indexes to variant_text."""
   variant_map = {}
   if key in vb_json.get('variant_text', {}):
+    variant_raw = vb_json['variant_text'][key].strip()
+    if not variant_raw:
+      return {}
     sanitized_line = [sanitize(w) for w in line]
-    line_variants = vb_json['variant_text'][key].strip().replace(' | ', '; ').split("; ")
+    line_variants = variant_raw.replace(' | ', '; ').split("; ")
     list_variants = []
     for line_variant in line_variants:
       if ' → ' in line_variant:
@@ -757,6 +768,7 @@ def get_bu_parallel_for_rule(rule: dict) -> str:
   return bu_parallel_id
 
 def render_copied_bi_rule(bhikkhuni_patimokkha: dict, category: dict, rule_meta: dict, number: int, next_file: Path | None):
+  bhikkhuni_patimokkha = clean_vb_json(bhikkhuni_patimokkha)
   rulename = RULENAMES[rule_meta['uid'].replace('-pm-', '-vb-')]
   rule_keys = get_pm_rule_keys(bhikkhuni_patimokkha, f"{category['root_name']} {number}. ")
   ret = """
@@ -806,12 +818,15 @@ def render_copied_bi_rule(bhikkhuni_patimokkha: dict, category: dict, rule_meta:
 
 
 def render_origin_story_for_rule(vb_json: dict) -> str:
-  try:
-    origin_story_scid = get_key_where_translation_contains(vb_json, 'Origin story')
-  except ValueError:
-    origin_story_scid = None
+  origin_story_scid = None
+  for header in ['Origin story', 'First substory', 'First sub-story']:
+    try:
+      origin_story_scid = get_key_where_translation_contains(vb_json, header)
+      break
+    except ValueError:
+      continue
   if not origin_story_scid:
-    origin_story_scid = get_key_where_translation_contains(vb_json, 'First sub-story')
+    raise ValueError(f"Could not find origin story header in {vb_json.get('keys_order', ['?'])[0]}")
   final_ruling_key = get_key_where_translation_contains(vb_json, 'Final ruling')
   final_ruling_key_index = vb_json['keys_order'].index(final_ruling_key)
   fpath = vb_folder_for_scid(origin_story_scid).joinpath(
@@ -955,6 +970,7 @@ def render_category_metafile(category: dict):
   write_md_file(fpath, category['uid'], None, markdown)
 
 def render_rule(category: dict, rule_meta: dict, number: int, vb_json: dict, next_file: Path | None):
+  vb_json = clean_vb_json(vb_json)
   ascii_rulename = f" {unidecode(category['root_name'])} {number} "
   sangha = "Bhikkhu"
   if rule_meta['uid'].startswith('pli-tv-bi'):
