@@ -6,6 +6,7 @@ from pathlib import Path
 
 from vnmutils import mdutils
 import suttacentral
+from khandhakas.generator import render_khandhakas
 
 if __name__ == "__main__":
   arg_parser = argparse.ArgumentParser(
@@ -95,6 +96,10 @@ if __name__ == "__main__":
         suttacentral.render_rule(category, vibhangas[vb_id], j+1, vb_json, next_file)
       else:
         suttacentral.render_copied_bi_rule(bhikkhuni_patimokkha, category, rule, j+1, next_file)
+
+  # This has to come after the rules, as the Khandhakas' footnotes link to them
+  print("Generating Khandhaka Notes...")
+  render_khandhakas()
 
   PALI_FOLDER.joinpath("README.md").write_text(f"""
 This folder contains the Vinaya of the Pāli Canon as a collection of markdown notes generated from Ajahn Brahmali's translation on SuttaCentral.
