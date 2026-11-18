@@ -46,6 +46,7 @@ def set_global_folders(pali_path: Path):
   global BRAHMALI_GLOSSARY
   global PM_FOLDER
   global VB_FOLDER
+  global KD_FOLDER
   global VB_WORD_DEFS_FOLDER
 
   PALI_FOLDER = pali_path
@@ -57,6 +58,7 @@ def set_global_folders(pali_path: Path):
   }
   PM_FOLDER = PALI_FOLDER.joinpath('Patimokkha')
   VB_FOLDER = PALI_FOLDER.joinpath('Vibhanga')
+  KD_FOLDER = PALI_FOLDER.joinpath('Khandhaka')
   VB_WORD_DEFS_FOLDER = VB_FOLDER.joinpath('Word Analysis')
   VB_WORD_DEFS_FOLDER.mkdir(exist_ok=True, parents=True)
   PM_FOLDER.mkdir()
@@ -592,7 +594,11 @@ def rule_shortname(scid: str) -> str:
   assert len(ruleid) >= 3 and len(ruleid) <= 4 and int(ruleid[2:]) > 0
   return f"{splittextid[2].capitalize()} {ruleid[0:2].capitalize()} {ruleid[2:]} ({RULENAMES[textid]})"
 
-def render_note_as_markdown(note: str, cwd: Path) -> str:
+def render_note_as_markdown(note: str, cwd: Path, strict: bool = True) -> str:
+  """Renders one of Ajahn Brahmali's notes (html) as markdown for a file in `cwd`.
+
+  If `strict`, raises an Exception when a reference to one of the appendices
+  can't be linked. Otherwise, such references are left as plain text."""
   # We're currently not importing the Plant or Furniture Appendices, so link to them on the web
   note = note.replace(
     "see Appendix of Plants",
@@ -602,7 +608,9 @@ def render_note_as_markdown(note: str, cwd: Path) -> str:
     "see Appendix of Furniture",
     "see [Appendix of Furniture](https://suttacentral.net/edition/pli-tv-vi/en/brahmali/appendix-furniture?lang=en)",
   )
-  if "see the same appendix" in note:
+  if "see the same appendix" in note and (strict or (
+    cwd == VB_WORD_DEFS_FOLDER and "“robe-cloth”, see the same appendix" in note
+  )):
     # A hacky implementation. Check our assumptions still hold first
     assert cwd == VB_WORD_DEFS_FOLDER, "Expected 'see the same appendix' to be in a word def"
     assert "“robe-cloth”, see the same appendix" in note, "Expected 'see the same appendix' to be about robecloth!"
@@ -617,6 +625,8 @@ def render_note_as_markdown(note: str, cwd: Path) -> str:
     for term in pali_terms:
       stemmed_term = pali_stem(term.group(1))
       if " " in stemmed_term:
+        if not strict:
+          continue
         raise NotImplementedError("Teach me how to handle multi-word Pali terms")
       if stemmed_term in BRAHMALI_GLOSSARY:
         start, end = term.span(1)
@@ -634,7 +644,7 @@ def render_note_as_markdown(note: str, cwd: Path) -> str:
     for part in split_note[:-1]:
       note += part
       pali_terms = list(COMMENT_INLINE_PALI.finditer(part))
-      if len(pali_terms) == 0:
+      if len(pali_terms) == 0 and strict:
         raise Exception(f"Unable to find a Pali term in \"\"\"{part}\"\"\"")
       else:
         pali_terms.reverse() # we want to find the last linkable one
@@ -650,6 +660,8 @@ def render_note_as_markdown(note: str, cwd: Path) -> str:
           elif term in ['abbhantar', 'dhan', 'yoj', 'aṅgul']:
             term = 'sugat' # This is one of the measurement terms
           if " " in term:
+            if not strict:
+              continue
             raise NotImplementedError("Teach me how to handle multi-word Pali terms")
           if term in BRAHMALI_GLOSSARY:
             matched = True
@@ -660,7 +672,9 @@ def render_note_as_markdown(note: str, cwd: Path) -> str:
             )
             break
         if not matched:
-          raise Exception(f"Unable to find glossary item match in \"\"\"{part}\"\"\"")
+          if strict:
+            raise Exception(f"Unable to find glossary item match in \"\"\"{part}\"\"\"")
+          note += "Appendix of Technical Terms"
     note += split_note[-1]
   return markdownify.markdownify(note).strip()
 

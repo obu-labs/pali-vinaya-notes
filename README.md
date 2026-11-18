@@ -19,3 +19,17 @@ python3 generate.py "Canon (Pali)"
 
 The generated notes will be found in the `Canon (Pali)` folder
 or whatever folder you set as the argument to the script.
+
+## Code
+
+- `generate.py` runs everything.
+- `suttacentral.py` fetches and renders the Pātimokkha rules and their Vibhaṅga.
+- `khandhakas/` renders the Khandhakas. Its docstring walks through the steps.
+- `utils/` has the helpers which aren't specific to either.
+
+The `khandhakas` and `utils` packages have unit tests, which need neither the
+network nor the files from `downloaddeps.sh`:
+```sh
+pip install pytest
+pytest
+```
