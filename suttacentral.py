@@ -530,6 +530,18 @@ def build_variant_map(line: list[str], key: str, vb_json: dict) -> dict[int, lis
       variant_map[location_of_variant] = v
   return variant_map
 
+def _render_translation_line(text: str) -> str:
+  """Converts inline HTML (e.g. <i lang='pi'>) in a translation segment to Markdown."""
+  return markdownify.markdownify(text).strip()
+
+def _render_footnotes(footnotes: list[str], heading: str = "Footnotes") -> str:
+  if not footnotes:
+    return ""
+  ret = f"\n## {heading}\n"
+  for i, footnote in enumerate(footnotes):
+    ret += f"\n[^{i + 1}]: {footnote}\n"
+  return ret
+
 def render_word_definition_file(filepath: Path, definitions: list[tuple[str, list[str]]], vb_json: dict):
   def apply_pe_references(term: str, definition: str) -> str:
     """Apply special case pe replacements based on filepath and term."""
@@ -571,7 +583,7 @@ def render_word_definition_file(filepath: Path, definitions: list[tuple[str, lis
     out = f"## {term}"
     if section_term_key in vb_json['translation_text']:
       out += " ("
-      out += vb_json['translation_text'][section_term_key].replace(": ", "")
+      out += _render_translation_line(vb_json['translation_text'][section_term_key].replace(": ", ""))
       out += ")"
     out += "\n"
     out += definition
@@ -581,7 +593,7 @@ def render_word_definition_file(filepath: Path, definitions: list[tuple[str, lis
     if translation:
       for i, line in enumerate(translation):
         line_key = section_dd_keys[i]
-        out += f"\n{line.strip()}"
+        out += f"\n{_render_translation_line(line)}"
         if 'comment_text' in vb_json and line_key in vb_json['comment_text']:
           comment_text = vb_json['comment_text'][line_key]
           # Hacky fix for an Ajahn Brahmali typo
@@ -622,10 +634,7 @@ def render_word_definition_file(filepath: Path, definitions: list[tuple[str, lis
     for section_term_key, section_dd_keys in sections:
       ret += render_section(section_term_key, section_dd_keys)
     line_key = definition_keys[-1]
-  if footnotes:
-    ret += "## Footnotes\n"
-    for i, footnote in enumerate(footnotes):
-      ret += f"\n[^{i + 1}]: {footnote}\n"
+  ret += _render_footnotes(footnotes).lstrip('\n')
   end_ref = line_key
   # Above we hacked some definitions out of order
   # This messes with the ranges, so just refer to these by
@@ -731,7 +740,7 @@ def render_nonoffenses(vb_json: dict, heading_scid: str):
     key_spot += 1
     scid = vb_json['keys_order'][key_spot]
     try:
-      ret += f"\n{vb_json['translation_text'][scid].strip()}"
+      ret += f"\n{_render_translation_line(vb_json['translation_text'][scid])}"
       if 'comment_text' in vb_json and scid in vb_json['comment_text']:
         footnotes.append(render_note_as_markdown(vb_json['comment_text'][scid], fpath.parent))
         translator_note_count += 1
@@ -747,13 +756,7 @@ def render_nonoffenses(vb_json: dict, heading_scid: str):
       ret += "  \n"
     except KeyError:
       pass # if no root_text, just concat the translation onto the previous
-  if footnotes:
-    ret += '\n## Footnote'
-    if len(footnotes) > 1:
-      ret += 's'
-    ret += '\n'
-    for i, footnote in enumerate(footnotes):
-      ret += f"\n[^{i + 1}]: {footnote}  \n"
+  ret += _render_footnotes(footnotes, heading="Footnote" if len(footnotes) == 1 else "Footnotes")
   ret += "\nTranslation "
   if translator_note_count:
     ret += "and note"
@@ -825,7 +828,7 @@ def render_copied_bi_rule(bhikkhuni_patimokkha: dict, category: dict, rule_meta:
   ret += "\n"
   for i, line in enumerate(translation_lines):
     key = rule_keys[i]
-    ret += f"\n{line.rstrip()}"
+    ret += f"\n{_render_translation_line(line)}"
     if key in bhikkhuni_patimokkha.get('comment_text', {}):
       notedown = render_note_as_markdown(
         bhikkhuni_patimokkha['comment_text'][key],
@@ -850,10 +853,7 @@ def render_copied_bi_rule(bhikkhuni_patimokkha: dict, category: dict, rule_meta:
     ret += "\n\n**Next:** [" + next_file.stem
     ret += abs_path_to_obsidian_link_text(next_file, filepath)
     ret += "\n"
-  if len(footnotes) > 0:
-    ret += "\n## Footnotes\n\n"
-    for i, f in enumerate(footnotes):
-      ret += f"[^{i+1}]: {f}\n"
+  ret += _render_footnotes(footnotes)
   write_md_file(filepath, rule_meta['uid'], None, ret)
 
 
@@ -892,10 +892,7 @@ def render_origin_story_for_rule(vb_json: dict) -> str:
   ret = "\nTranslated by Ajahn Brahmali\n\nSource: <" + \
     sc_link_for_ref(origin_story_scid) + \
     ">\n\n" + markdownify.markdownify(ret) + "...\n"
-  if footnotes:
-    ret += "\n## Footnotes\n"
-    for i, footnote in enumerate(footnotes):
-      ret += f"\n[^{i + 1}]: {footnote}\n"
+  ret += _render_footnotes(footnotes)
   write_md_file(fpath, origin_story_scid, key, ret)
   return origin_story_scid
 
@@ -927,24 +924,169 @@ def render_allowance_for_rule(vb_json: dict, allowance_scid: str) -> str:
   ret = markdownify.markdownify(ret) + "\n\n#### The Allowance\n"
   while key_index < definitions_key_index:
     key = vb_json['keys_order'][key_index]
-    translation = vb_json['translation_text'].get(key, '')
+    translation = _render_translation_line(vb_json['translation_text'].get(key, ''))
     text = vb_json['root_text'].get(key, '')
     # TODO render variants as footnotes as well here
     if 'comment_text' in vb_json and key in vb_json['comment_text']:
       footnotes.append(render_note_as_markdown(vb_json['comment_text'][key], fpath.parent))
-      translation = translation.rstrip()
-      translation += f"[^{len(footnotes)}] "
+      translation += f"[^{len(footnotes)}]"
     ret += f"\n> {text.strip()}\n"
-    ret += f"\n**{translation.strip()}**\n"
+    ret += f"\n**{translation}**\n"
     key_index += 1
   ret = "\nTranslated by Ajahn Brahmali\n\nSource: <" + \
     sc_link_for_ref(allowance_scid) + ">\n\n" + ret
-  if footnotes:
-    ret += "\n## Footnotes\n"
-    for i, footnote in enumerate(footnotes):
-      ret += f"\n[^{i + 1}]: {footnote}\n"
+  ret += _render_footnotes(footnotes)
   write_md_file(fpath, allowance_scid, key, ret)
   return allowance_scid
+
+def _get_post_definitions_span(vb_json: dict) -> list[str]:
+  """Returns keys after the last Definitions </dl> up to the next major section (cakka/anapatti/etc.)."""
+  keys = vb_json['keys_order']
+  # Find the last padabhajaniya section
+  last_pada_start = -1
+  for i, k in enumerate(keys):
+    if "class='padabhajaniya'" in vb_json['html_text'].get(k, ''):
+      last_pada_start = i
+  if last_pada_start == -1:
+    return []
+  # Walk to the end of the padabhajaniya section (tracking nested <section> tags)
+  # and continue past </section> until the next major section.
+  depth = 0
+  j = last_pada_start
+  while j < len(keys):
+    hj = vb_json['html_text'].get(keys[j], '')
+    depth += len(re.findall(r'<section\b', hj))
+    depth -= len(re.findall(r'</section>', hj))
+    if depth <= 0:
+      break
+    j += 1
+  end_j = j
+  while end_j + 1 < len(keys):
+    nh = vb_json['html_text'].get(keys[end_j + 1], '')
+    if any(c in nh for c in ["class='cakka'", "class='anapatti'", "class='endsutta'", "class='uddana'", "class='vinaya-vinita'"]):
+      break
+    end_j += 1
+  span = keys[last_pada_start:end_j + 1]
+  # Check if this span contains a procedure (<section class='kamma'> or <section class='formal-statement'>)
+  first_proc_idx = next(
+    (idx for idx, k in enumerate(span) if "class='kamma'" in vb_json['html_text'].get(k, '') or "class='formal-statement'" in vb_json['html_text'].get(k, '')),
+    -1,
+  )
+  # For rules with a procedure, find the last </dl> BEFORE the procedure (so trailing <hr><dl> like Bu NP 22 stays in the procedure).
+  # Otherwise, find the last </dl> in the padabhajaniya section itself.
+  search_end = first_proc_idx if first_proc_idx != -1 else (j - last_pada_start + 1)
+  last_dl = -1
+  for idx in range(search_end):
+    if '</dl>' in vb_json['html_text'].get(span[idx], ''):
+      last_dl = idx
+  if last_dl == -1:
+    return []
+  if first_proc_idx != -1:
+    return span[last_dl + 1:]
+  return span[last_dl + 1:j - last_pada_start + 1]
+
+def get_derived_offenses_and_procedure_refs(vb_json: dict, is_sekhiya: bool) -> tuple[list[str], tuple[str, str, list[str]] | None]:
+  """Returns (derived_offenses_keys, (link_label, file_prefix, procedure_keys) | None)."""
+  keys = vb_json['keys_order']
+  if is_sekhiya:
+    fr_keys = get_final_ruling_refs_from_vb_json(vb_json)
+    last_fr = fr_keys[-1]
+    if '</section>' not in vb_json['html_text'][last_fr]:
+      idx = keys.index(last_fr) + 1
+      out = []
+      while idx < len(keys):
+        out.append(keys[idx])
+        if '</section>' in vb_json['html_text'][keys[idx]]:
+          break
+        idx += 1
+      return (out, None)
+    return (_get_post_definitions_span(vb_json), None)
+
+  trailing = _get_post_definitions_span(vb_json)
+  if not trailing:
+    return ([], None)
+  has_proc = any(
+    "class='kamma'" in vb_json['html_text'].get(k, '') or "class='formal-statement'" in vb_json['html_text'].get(k, '')
+    for k in trailing
+  )
+  if not has_proc:
+    return (trailing, None)
+
+  relinq_idx = next(
+    (idx for idx, k in enumerate(trailing) if 'should be relinquished' in vb_json['translation_text'].get(k, '')),
+    -1,
+  )
+  if relinq_idx != -1:
+    return (trailing[:relinq_idx], ("Relinquishment Procedure", "Relinquishment procedure", trailing[relinq_idx:]))
+  return ([], ("Formal Procedure", "Formal procedure", trailing))
+
+def _render_pali_english_blocks(
+  vb_json: dict,
+  seg_keys: list[str],
+  fpath: Path,
+  doc_id: Optional[str] = None,
+) -> str:
+  """Renders a sequence of segments as paragraph-grouped Pali blockquotes + Markdown English + footnotes."""
+  paragraphs: list[list[str]] = []
+  current_para: list[str] = []
+  for k in seg_keys:
+    h = vb_json['html_text'].get(k, '')
+    if current_para and any(tag in h for tag in ['<p', '<hr>', '<dt>', "<section"]):
+      paragraphs.append(current_para)
+      current_para = []
+    current_para.append(k)
+  if current_para:
+    paragraphs.append(current_para)
+
+  ret = ''
+  footnotes = []
+  for p_idx, para in enumerate(paragraphs):
+    if p_idx > 0:
+      ret += '\n'
+    pali_lines = []
+    for k in para:
+      if vb_json['root_text'].get(k, '').strip():
+        pali_lines.append("> " + render_pali_line_with_variants(_get_root_text(vb_json, k), k, vb_json, footnotes))
+    if pali_lines:
+      ret += "\n".join(pali_lines) + "\n\n"
+    for k in para:
+      raw_line = vb_json['translation_text'].get(k, '').strip()
+      if not raw_line:
+        continue
+      line = _render_translation_line(raw_line)
+      if 'comment_text' in vb_json and k in vb_json['comment_text']:
+        footnotes.append(render_note_as_markdown(vb_json['comment_text'][k], fpath.parent))
+        line += f"[^{len(footnotes)}]"
+      ret += f"{line}\n"
+  ret += f"\n~ [Ajahn Brahmali's translation]({sc_link_for_ref(seg_keys[0], doc_id)})\n"
+  ret += _render_footnotes(footnotes)
+  return ret
+
+def render_derived_offenses_and_procedure_for_rule(
+  vb_json: dict,
+  is_sekhiya: bool,
+) -> tuple[str | None, tuple[str, str] | None]:
+  derived_keys, proc_spec = get_derived_offenses_and_procedure_refs(vb_json, is_sekhiya)
+  derived_scid = None
+  if derived_keys:
+    first_scid = derived_keys[0]
+    fpath = vb_folder_for_scid(first_scid).joinpath(
+      f"Derived offenses for {rule_shortname(first_scid)}.md"
+    )
+    ret = _render_pali_english_blocks(vb_json, derived_keys, fpath)
+    write_md_file(fpath, first_scid, derived_keys[-1], ret)
+    derived_scid = first_scid
+  proc_result = None
+  if proc_spec:
+    link_label, file_prefix, proc_keys = proc_spec
+    first_scid = proc_keys[0]
+    fpath = vb_folder_for_scid(first_scid).joinpath(
+      f"{file_prefix} for {rule_shortname(first_scid)}.md"
+    )
+    ret = _render_pali_english_blocks(vb_json, proc_keys, fpath)
+    write_md_file(fpath, first_scid, proc_keys[-1], ret)
+    proc_result = (link_label, first_scid)
+  return (derived_scid, proc_result)
 
 def render_permutations_for_rule(vb_json: dict) -> str | None: # returns scid
   try:
@@ -986,13 +1128,7 @@ def render_permutations_for_rule(vb_json: dict) -> str | None: # returns scid
   ret = "\nTranslated by Ajahn Brahmali\n\nSource: <" + \
     sc_link_for_ref(permutations_scid) + \
     ">\n\n" + markdownify.markdownify(ret)
-  if footnotes:
-    ret += "\n## Note"
-    if len(footnotes) > 1:
-      ret += "s"
-    ret += "\n"
-    for i, footnote in enumerate(footnotes):
-      ret += f"\n[^{i + 1}]: {footnote}\n"
+  ret += _render_footnotes(footnotes, heading="Note" if len(footnotes) == 1 else "Notes")
   write_md_file(fpath, permutations_scid, key, ret)
   return permutations_scid
 
@@ -1055,9 +1191,9 @@ def render_adhikaranasamatha(category: dict, vb_json: dict):
     ret += f"> {idx}. " + render_pali_line_with_variants(_get_root_text(vb_json, k), k, vb_json, footnotes) + "\n"
   ret += "\n"
   for i, k in enumerate(intro_keys):
-    ret += vb_json['translation_text'][k].strip() + ("  \n" if i == 0 else "\n")
+    ret += _render_translation_line(vb_json['translation_text'][k]) + ("  \n" if i == 0 else "\n")
   for idx, k in enumerate(rule_keys, start=1):
-    ret += f"{idx}. {vb_json['translation_text'][k].strip()}\n"
+    ret += f"{idx}. {_render_translation_line(vb_json['translation_text'][k])}\n"
   ret += f"\n~ [Ajahn Brahmali's translation]({sc_link_for_ref(intro_keys[0], doc_id)})\n\n"
   ret += "## Vibhaṅga\n\n"
   ret += "There is no Vibhaṅga for the *adhikaraṇasamathadhammas*. "
@@ -1065,10 +1201,7 @@ def render_adhikaranasamatha(category: dict, vb_json: dict):
   ret += "\n\n**Next:** [" + nigamana_file.stem
   ret += abs_path_to_obsidian_link_text(nigamana_file, fpath)
   ret += "\n"
-  if footnotes:
-    ret += "\n## Footnotes\n\n"
-    for i, footnote in enumerate(footnotes):
-      ret += f"[^{i+1}]: {footnote}\n"
+  ret += _render_footnotes(footnotes)
 
   extra_aliases = [f"{pm_prefix}{n}" for n in range(1, 8)]
   write_md_file(fpath, doc_id, None, ret, extra_aliases=extra_aliases)
@@ -1099,19 +1232,7 @@ def render_nigamana(category: dict, vb_json: dict):
   ]
   assert len(nigamana_keys) > 0, f"No Nigamana keys found in {doc_id}"
 
-  footnotes = []
-  ret = "## Nigamana\n\n"
-  for k in nigamana_keys:
-    ret += "> " + render_pali_line_with_variants(_get_root_text(vb_json, k), k, vb_json, footnotes) + "\n"
-  ret += "\n"
-  for k in nigamana_keys:
-    ret += vb_json['translation_text'][k].strip() + "\n"
-  ret += f"\n~ [Ajahn Brahmali's translation]({sc_link_for_ref(nigamana_keys[0], doc_id)})\n"
-  if footnotes:
-    ret += "\n## Footnotes\n\n"
-    for i, footnote in enumerate(footnotes):
-      ret += f"[^{i+1}]: {footnote}\n"
-
+  ret = "## Nigamana\n\n" + _render_pali_english_blocks(vb_json, nigamana_keys, fpath, doc_id=doc_id)
   write_md_file(fpath, nigamana_keys[0], nigamana_keys[-1], ret)
 
 def render_rule(category: dict, rule_meta: dict, number: int, vb_json: dict, next_file: Path | None):
@@ -1124,6 +1245,9 @@ def render_rule(category: dict, rule_meta: dict, number: int, vb_json: dict, nex
   allowance_scid = None
   if rule_meta['uid'] in ALLOWANCE_STORIES:
     allowance_scid = render_allowance_for_rule(vb_json, ALLOWANCE_STORIES[rule_meta['uid']])
+  derived_offenses_scid, procedure_info = render_derived_offenses_and_procedure_for_rule(
+    vb_json, category['root_name'] == 'Sekhiya'
+  )
   permutations_scid = render_permutations_for_rule(vb_json)
   if ' Sekhiya ' not in ascii_rulename and sangha == "Bhikkhu":
     vb_file = path_to_suddhaso_file_starting_with(f"VB{ascii_rulename}")
@@ -1209,7 +1333,7 @@ def render_rule(category: dict, rule_meta: dict, number: int, vb_json: dict, nex
   ret += '\n\n'
   num_variants = len(footnotes)
   for k in rule_keys:
-    ret += vb_json['translation_text'].get(k, '').strip()
+    ret += _render_translation_line(vb_json['translation_text'].get(k, ''))
     if k in vb_json.get('comment_text', {}):
       footnotes.append(render_note_as_markdown(vb_json['comment_text'][k], rule_file.parent) + " (AjBr)")
       ret += f"[^{len(footnotes)}]"
@@ -1220,6 +1344,11 @@ def render_rule(category: dict, rule_meta: dict, number: int, vb_json: dict, nex
     ret += f"  - [Origin Story{abs_path_to_obsidian_link_text(SCUID_SEGMENT_PATHS.get(origin_story_scid), rule_file)}\n"
   if allowance_scid:
     ret += f"  - [Allowance{abs_path_to_obsidian_link_text(SCUID_SEGMENT_PATHS.get(allowance_scid), rule_file)}\n"
+  if derived_offenses_scid:
+    ret += f"  - [Derived Offenses{abs_path_to_obsidian_link_text(SCUID_SEGMENT_PATHS.get(derived_offenses_scid), rule_file)}\n"
+  if procedure_info:
+    proc_label, proc_scid = procedure_info
+    ret += f"  - [{proc_label}{abs_path_to_obsidian_link_text(SCUID_SEGMENT_PATHS.get(proc_scid), rule_file)}\n"
   if permutations_scid:
     ret += f"  - [Permutations{abs_path_to_obsidian_link_text(SCUID_SEGMENT_PATHS.get(permutations_scid), rule_file)}\n"
   if nonoffenses_scid:
