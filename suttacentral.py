@@ -77,6 +77,20 @@ def file_for_category(category: dict) -> Path:
     sangha = "Bhikkhunī"
   return ret / f"The {sangha} {category['root_name']}s.md"
 
+def pm_file_for_as(category_uid: str) -> Path:
+  if category_uid.startswith('pli-tv-bu-'):
+    return PM_FOLDER / 'Bhikkhu' / '8 - Adhikaranasamatha.md'
+  elif category_uid.startswith('pli-tv-bi-'):
+    return PM_FOLDER / 'Bhikkhuni' / '7 - Adhikaranasamatha.md'
+  raise ValueError(f"Unknown as category uid \"{category_uid}\"")
+
+def pm_file_for_nigamana(category_uid: str) -> Path:
+  if category_uid.startswith('pli-tv-bu-'):
+    return PM_FOLDER / 'Bhikkhu' / '9 - Nigamana.md'
+  elif category_uid.startswith('pli-tv-bi-'):
+    return PM_FOLDER / 'Bhikkhuni' / '8 - Nigamana.md'
+  raise ValueError(f"Unknown as category uid \"{category_uid}\"")
+
 def _rule_dir_for_scid(scid: str, base: Path):
   ret = base
   offset = 0
@@ -103,6 +117,8 @@ def _rule_dir_for_scid(scid: str, base: Path):
       ret = ret / f'{6+offset} - Patidesaniya'
     case 'sk':
       ret = ret / f'{7+offset} - Sekhiya'
+    case 'as':
+      ret = ret / f'{8+offset} - Adhikaranasamatha'
     case _:
       raise ValueError(f"Unknown rule class \"{scid[13:15]}\"")
   return ret
@@ -131,7 +147,11 @@ SC_MENU_URL = "https://suttacentral.net/api/menu/{}?language=en"
 PARALLELS_URL = "https://suttacentral.net/api/parallels/{}"
 LITE_PARALLELS_URL = "https://suttacentral.net/api/parallels_lite/{}"
 
-def sc_link_for_ref(ref: str) -> str:
+def sc_link_for_ref(ref: str, doc_id: Optional[str] = None) -> str:
+  if doc_id:
+    return (f"https://suttacentral.net/{doc_id}/en/brahmali?"
+      "layout=linebyline" # IMPORTANT See note below before changing
+      f"#{ref}")
   key = ref.split(':')
   return (f"https://suttacentral.net/{key[0]}/en/brahmali?"
     "layout=linebyline" # IMPORTANT See note below before changing
@@ -385,11 +405,20 @@ def path_to_suddhaso_file_starting_with(file_prefix: str) -> Optional[Path]:
 
 PREVIOUSLY_WRITTEN_FILES = set()
 
-def write_md_file(rule_file: Path, start_scuid: str, end_scuid: str | None, content: str) -> None:
+def write_md_file(
+  rule_file: Path,
+  start_scuid: str,
+  end_scuid: str | None,
+  content: str,
+  extra_aliases: Optional[list[str]] = None,
+) -> None:
   rule_file.parent.mkdir(exist_ok=True, parents=True)
   aliases = start_scuid
   if end_scuid and end_scuid != start_scuid:
     aliases += f"\n  - {end_scuid}"
+  if extra_aliases:
+    for alias in extra_aliases:
+      aliases += f"\n  - {alias}"
   fname = str(rule_file.stem).lower()
   if fname in PREVIOUSLY_WRITTEN_FILES:
     raise Exception(f"ERROR: We already wrote a file named {fname}")
@@ -536,13 +565,7 @@ def render_word_definition_file(filepath: Path, definitions: list[tuple[str, lis
         definition += vb_json['root_text'][line_key].strip()
         definition += f"[^{len(footnotes)}] "
         continue
-      variant_map = build_variant_map(line, line_key, vb_json)
-      for j, word in enumerate(line):
-        definition += word
-        if j in variant_map:
-           footnotes.append(" → ".join(variant_map[j]))
-           definition += f"[^{len(footnotes)}]"
-        definition += ' '
+      definition += render_pali_line_with_variants(line, line_key, vb_json, footnotes) + ' '
     definition = apply_pe_references(term, definition)
 
     out = f"## {term}"
@@ -976,15 +999,120 @@ def render_permutations_for_rule(vb_json: dict) -> str | None: # returns scid
 def render_category_metafile(category: dict):
   fpath = file_for_category(category)
   markdown = "\n" + markdownify.markdownify(category['blurb'])
-  markdown += "\n\nNext: ["
-  if '-bi-' in category['uid']:
-    markdown += "Bhikkhunī "
+  markdown = markdown.replace(
+    "*Samathakkhandhaka*",
+    "[*Samathakkhandhaka*](https://suttacentral.net/pli-tv-kd14/en/brahmali)",
+  )
+  if category['uid'].endswith('-as'):
+    as_file = pm_file_for_as(category['uid'])
+    markdown += "\n\nNext: [" + as_file.stem
+    markdown += abs_path_to_obsidian_link_text(as_file, fpath)
+    markdown += "\n"
   else:
-    markdown += "Bhikkhu "
-  markdown += category['root_name'] + " 1 (" + RULENAMES[category['uid']+'1'] + ")"
-  markdown += abs_path_to_obsidian_link_text(pm_file_for_scid(category['uid']+'1'), fpath)
-  markdown += "\n"
+    markdown += "\n\nNext: ["
+    if '-bi-' in category['uid']:
+      markdown += "Bhikkhunī "
+    else:
+      markdown += "Bhikkhu "
+    markdown += category['root_name'] + " 1 (" + RULENAMES[category['uid']+'1'] + ")"
+    markdown += abs_path_to_obsidian_link_text(pm_file_for_scid(category['uid']+'1'), fpath)
+    markdown += "\n"
   write_md_file(fpath, category['uid'], None, markdown)
+
+def render_pali_line_with_variants(line: list[str], key: str, vb_json: dict, footnotes: list[str]) -> str:
+  """Renders a tokenized Pali line with inline variant footnotes."""
+  variant_map = build_variant_map(line, key, vb_json)
+  rendered = []
+  for j, word in enumerate(line):
+    if j in variant_map:
+      footnotes.append(" → ".join(variant_map[j]))
+      word += f"[^{len(footnotes)}]"
+    rendered.append(word)
+  return " ".join(rendered)
+
+def render_adhikaranasamatha(category: dict, vb_json: dict):
+  vb_json = clean_vb_json(vb_json)
+  vb_prefix = category['uid']
+  pm_prefix = vb_prefix.replace('-vb-', '-pm-')
+  doc_id = f"{vb_prefix}1-7"
+  fpath = pm_file_for_as(vb_prefix)
+  nigamana_file = pm_file_for_nigamana(vb_prefix)
+
+  keys = vb_json['keys_order']
+  endsutta_key = get_keys_where_html_contains(vb_json, "class='endsutta'")[0]
+  endsutta_idx = keys.index(endsutta_key)
+  as_keys = keys[:endsutta_idx + 1]
+
+  intro_keys = [k for k in as_keys if k.endswith(':1.1') or k.endswith(':2.1')][:2]
+  rule_keys = [k for k in as_keys if "class='rule'" in vb_json['html_text'][k]]
+  assert len(rule_keys) == 7, f"Expected 7 Adhikaranasamatha rules, found {len(rule_keys)}"
+
+  footnotes = []
+  ret = "## The Seven Principles\n\n"
+  for k in intro_keys:
+    ret += "> " + render_pali_line_with_variants(_get_root_text(vb_json, k), k, vb_json, footnotes) + "\n"
+  for idx, k in enumerate(rule_keys, start=1):
+    ret += f"> {idx}. " + render_pali_line_with_variants(_get_root_text(vb_json, k), k, vb_json, footnotes) + "\n"
+  ret += "\n"
+  for i, k in enumerate(intro_keys):
+    ret += vb_json['translation_text'][k].strip() + ("  \n" if i == 0 else "\n")
+  for idx, k in enumerate(rule_keys, start=1):
+    ret += f"{idx}. {vb_json['translation_text'][k].strip()}\n"
+  ret += f"\n~ [Ajahn Brahmali's translation]({sc_link_for_ref(intro_keys[0], doc_id)})\n\n"
+  ret += "## Vibhaṅga\n\n"
+  ret += "There is no Vibhaṅga for the *adhikaraṇasamathadhammas*. "
+  ret += "The detailed explanation is found in the [*Samathakkhandhaka*](https://suttacentral.net/pli-tv-kd14/en/brahmali).\n"
+  ret += "\n\n**Next:** [" + nigamana_file.stem
+  ret += abs_path_to_obsidian_link_text(nigamana_file, fpath)
+  ret += "\n"
+  if footnotes:
+    ret += "\n## Footnotes\n\n"
+    for i, footnote in enumerate(footnotes):
+      ret += f"[^{i+1}]: {footnote}\n"
+
+  extra_aliases = [f"{pm_prefix}{n}" for n in range(1, 8)]
+  write_md_file(fpath, doc_id, None, ret, extra_aliases=extra_aliases)
+
+  for n in range(1, 8):
+    SCUID_SEGMENT_PATHS.add(f"{pm_prefix}{n}", None, fpath)
+    SCUID_SEGMENT_PATHS.add(f"{vb_prefix}{n}", None, fpath)
+
+  # Register per-appid segment ranges (IDRangePathStore requires matching appids)
+  appid_groups: dict[str, list[str]] = {}
+  for k in as_keys:
+    appid = k.split(':')[0]
+    appid_groups.setdefault(appid, []).append(k)
+  for group in appid_groups.values():
+    SCUID_SEGMENT_PATHS.add(group[0], group[-1], fpath)
+
+def render_nigamana(category: dict, vb_json: dict):
+  vb_json = clean_vb_json(vb_json)
+  vb_prefix = category['uid']
+  doc_id = f"{vb_prefix}1-7"
+  fpath = pm_file_for_nigamana(vb_prefix)
+
+  keys = vb_json['keys_order']
+  endsutta_key = get_keys_where_html_contains(vb_json, "class='endsutta'")[0]
+  nigamana_keys = [
+    k for k in keys[keys.index(endsutta_key) + 1:]
+    if not vb_json['root_text'].get(k, '').strip().endswith(('niṭṭhito.', 'niṭṭhitā.'))
+  ]
+  assert len(nigamana_keys) > 0, f"No Nigamana keys found in {doc_id}"
+
+  footnotes = []
+  ret = "## Nigamana\n\n"
+  for k in nigamana_keys:
+    ret += "> " + render_pali_line_with_variants(_get_root_text(vb_json, k), k, vb_json, footnotes) + "\n"
+  ret += "\n"
+  for k in nigamana_keys:
+    ret += vb_json['translation_text'][k].strip() + "\n"
+  ret += f"\n~ [Ajahn Brahmali's translation]({sc_link_for_ref(nigamana_keys[0], doc_id)})\n"
+  if footnotes:
+    ret += "\n## Footnotes\n\n"
+    for i, footnote in enumerate(footnotes):
+      ret += f"[^{i+1}]: {footnote}\n"
+
+  write_md_file(fpath, nigamana_keys[0], nigamana_keys[-1], ret)
 
 def render_rule(category: dict, rule_meta: dict, number: int, vb_json: dict, next_file: Path | None):
   vb_json = clean_vb_json(vb_json)

@@ -34,7 +34,12 @@ if __name__ == "__main__":
   bhikkhuni_patimokkha = suttacentral.get_vb_json('pli-tv-bi-pm')
   for i, category in enumerate(categories):
     if category['uid'] == "pli-tv-bu-vb-as":
-      continue # TODO: https://github.com/obu-labs/pali-vinaya-notes/issues/1
+      suttacentral.render_category_metafile(category)
+      print("  Writing Bhikkhu Adhikaraṇasamathas and Nigamana...")
+      vb_json = suttacentral.get_vb_json("pli-tv-bu-vb-as1-7")
+      suttacentral.render_adhikaranasamatha(category, vb_json)
+      suttacentral.render_nigamana(category, vb_json)
+      continue
     suttacentral.render_category_metafile(category)
     print(f"  Fetching Bhikkhu {category['root_name']} rules...")
     rules = suttacentral.get_rules_for_category(category['uid'])
@@ -43,7 +48,7 @@ if __name__ == "__main__":
       vb_json = suttacentral.get_vb_json(rule['uid'])
       if j < len(rules) - 1:
         next_file = suttacentral.pm_file_for_scid(rules[j+1]['uid'])
-      elif i < len(categories) - 2:
+      elif i < len(categories) - 1:
         next_file = suttacentral.file_for_category(categories[i+1])
       else:
         next_file = None
@@ -52,6 +57,11 @@ if __name__ == "__main__":
   bi_categories = suttacentral.get_rule_categories('pli-tv-bi-vb')
   for i, category in enumerate(bi_categories):
     if category['uid'] == "pli-tv-bi-vb-as":
+      suttacentral.render_category_metafile(category)
+      print("  Writing Bhikkhunī Adhikaraṇasamathas and Nigamana...")
+      vb_json = suttacentral.get_vb_json("pli-tv-bi-vb-as1-7")
+      suttacentral.render_adhikaranasamatha(category, vb_json)
+      suttacentral.render_nigamana(category, vb_json)
       continue
     rules = suttacentral.get_bhikkhuni_rules_in_category(
       category['uid'].replace('-bu-', '-bi-').replace('-vb-', '-pm-')
@@ -76,7 +86,7 @@ if __name__ == "__main__":
       vb_id = rule['uid'].replace('-pm-', '-vb-')
       if j < len(rules) - 1:
         next_file = suttacentral.pm_file_for_scid(rules[j+1]['uid'].replace('-pm-', '-vb-'))
-      elif i < len(bi_categories) - 2:
+      elif i < len(bi_categories) - 1:
         next_file = suttacentral.file_for_category(bi_categories[i+1])
       else:
         next_file = None
