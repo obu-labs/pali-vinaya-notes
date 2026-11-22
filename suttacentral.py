@@ -467,7 +467,7 @@ def render_word_definitions(vb_json: dict, root_text: list[list[str]]) -> list[t
       for j in range(len(definition_keys)):
         if '<dt>{}' in vb_json['html_text'][definition_keys[j]]:
           definitions.insert(i+1, (definition_keys[j], definition_keys[j+1:]))
-          del definitions[i][1][j+1:]
+          del definitions[i][1][j:]
           break
       i += 1
     render_word_definition_file(filepath, definitions, vb_json)
@@ -520,16 +520,15 @@ def render_word_definition_file(filepath: Path, definitions: list[tuple[str, lis
         return definition.replace("…pe…", replacement)
     return definition
   
-  ret = ''
-  footnotes = []
-  for term_key, definition_keys in definitions:
-    term = vb_json['root_text'][term_key].strip()
-    # render the root definition with variants and pe links
-    root_text = get_root_text(vb_json, definition_keys)
+  def render_section(section_term_key: str, section_dd_keys: list[str]) -> str:
+    """Render one ## Pali (English) + blockquote + translation + link section."""
+    nonlocal footnotes
+    term = vb_json['root_text'][section_term_key].strip()
+    root_text = get_root_text(vb_json, section_dd_keys)
     definition = ''
     for i, line in enumerate(root_text):
       definition += '\n> '
-      line_key = definition_keys[i]
+      line_key = section_dd_keys[i]
       if line_key in ['pli-tv-bu-vb-pc71:2.1.9']:
         # In these exceptional cases where I can't parse the variant_text,
         # just stick the note on the end of the line
@@ -546,19 +545,20 @@ def render_word_definition_file(filepath: Path, definitions: list[tuple[str, lis
         definition += ' '
     definition = apply_pe_references(term, definition)
 
-    translation = [vb_json['translation_text'][k] for k in definition_keys if k in vb_json['translation_text']]
-    ret += f"## {term}"
-    if term_key in vb_json['translation_text']:
-      ret += " ("
-      ret += vb_json['translation_text'][term_key].replace(": ", "")
-      ret += ")"
-    ret += "\n"
-    ret += definition
-    ret += "\n"
+    out = f"## {term}"
+    if section_term_key in vb_json['translation_text']:
+      out += " ("
+      out += vb_json['translation_text'][section_term_key].replace(": ", "")
+      out += ")"
+    out += "\n"
+    out += definition
+    out += "\n"
+
+    translation = [vb_json['translation_text'][k] for k in section_dd_keys if k in vb_json['translation_text']]
     if translation:
       for i, line in enumerate(translation):
-        ret += f"\n{line.strip()}"
-        line_key = definition_keys[i]
+        line_key = section_dd_keys[i]
+        out += f"\n{line.strip()}"
         if 'comment_text' in vb_json and line_key in vb_json['comment_text']:
           comment_text = vb_json['comment_text'][line_key]
           # Hacky fix for an Ajahn Brahmali typo
@@ -570,9 +570,35 @@ def render_word_definition_file(filepath: Path, definitions: list[tuple[str, lis
               "“standard fingerbreadths”. For an explanation of <i lang='pi' translate='no'>sugata</i>, the idea",
             )
           footnotes.append(render_note_as_markdown(comment_text, filepath.parent))
-          ret += f"[^{len(footnotes)}]"
-      ret += "\n"
-      ret += f"\n~ [Ajahn Brahmali's translation]({sc_link_for_ref(term_key)})\n\n"
+          out += f"[^{len(footnotes)}]"
+      out += "\n"
+      out += f"\n~ [Ajahn Brahmali's translation]({sc_link_for_ref(section_term_key)})\n\n"
+    return out
+
+  ret = ''
+  footnotes = []
+  for term_key, definition_keys in definitions:
+    # Split definition_keys at any interior <dt> boundaries.
+    # A <dt> inside definition_keys is a sub-term that gets its own full
+    # ## Pali (English) + blockquote + translation + link section.
+    sections = []  # list of (section_term_key, [dd_keys])
+    current_term_key = term_key
+    current_dd_keys = []
+    for dk in definition_keys:
+      if '<dt>' in vb_json['html_text'].get(dk, ''):
+        # Flush the previous section (if it has body keys), start a new one
+        if current_dd_keys:
+          sections.append((current_term_key, current_dd_keys))
+        current_term_key = dk
+        current_dd_keys = []
+      else:
+        current_dd_keys.append(dk)
+    if current_dd_keys or not sections:
+      sections.append((current_term_key, current_dd_keys))
+
+    for section_term_key, section_dd_keys in sections:
+      ret += render_section(section_term_key, section_dd_keys)
+    line_key = definition_keys[-1]
   if footnotes:
     ret += "## Footnotes\n"
     for i, footnote in enumerate(footnotes):
